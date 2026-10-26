@@ -102,48 +102,39 @@ vrButton = VRButton.createButton(renderer); vrButton.disabled = false; document.
 renderer.xr.addEventListener('sessionstart', () => {
   gameStarted = false; chosenDomain = null;
   Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
-  showDomainMenu('CHOOSE YOUR DOMAIN');
+  showDomainMenu('SELECT DOMAIN TO START');
 });
-renderer.xr.addEventListener('sessionend', () => { gameStarted = false; hideDomainMenu(); });
+renderer.xr.addEventListener('sessionend', () => { gameStarted = false; awaitingDomainPick = true; hideDomainMenu(); });
 
 // Floating in-VR domain picker: aim a controller at a card and press its trigger.
-let vrMenuMessage = 'CHOOSE YOUR DOMAIN';
-const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainSelection';
-vrDomainGroup.position.set(0, 0, -2.15); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
-const vrDomainButtons = [];
-function makeMenuTexture(title, subtitle, selected=false) {
-  const c = document.createElement('canvas'); c.width = 640; c.height = 240;
-  const x = c.getContext('2d'); x.fillStyle = selected ? '#332b59' : '#101321'; x.fillRect(0,0,640,240);
-  x.strokeStyle = selected ? '#f7d66b' : '#a5b4fc'; x.lineWidth = 8; x.strokeRect(5,5,630,230);
-  x.textAlign = 'center'; x.fillStyle = '#ffffff'; x.font = 'bold 38px sans-serif'; x.fillText(title,320,92);
-  x.fillStyle = '#cdd5f7'; x.font = '24px sans-serif'; x.fillText(subtitle,320,150);
-  if (selected) { x.fillStyle='#f7d66b'; x.font='bold 22px sans-serif'; x.fillText('SELECTED',320,202); }
+// In-VR instruction only: select the domain by holding its hand sign.
+let vrMenuMessage = 'SELECT DOMAIN TO START';
+const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainInstruction';
+vrDomainGroup.position.set(0, 0, -1.65); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
+function makeInstructionTexture(message) {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 420;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgba(7,9,19,.94)'; x.fillRect(0,0,c.width,c.height);
+  x.strokeStyle = '#a5b4fc'; x.lineWidth = 8; x.strokeRect(5,5,c.width-10,c.height-10);
+  x.textAlign = 'center'; x.fillStyle = '#fff'; x.font = 'bold 54px sans-serif';
+  const lines = message.split('\n');
+  lines.forEach((line,i) => { x.fillText(line,512,100+i*68); });
+  x.fillStyle = '#cdd5f7'; x.font = '30px sans-serif';
+  x.fillText('Unlimited Void: crossed index + middle fingers',512,270);
+  x.fillText('Malevolent Shrine: two peace signs together',512,315);
+  x.fillText('Iron Mountain: two open palms together',512,360);
+  x.fillText('Shadow Garden: two fists together',512,405);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-const vrMenuBg = new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.85), new THREE.MeshBasicMaterial({color:0x070913, transparent:true, opacity:.94, depthTest:false}));
-vrMenuBg.position.set(0,0,0.03); vrDomainGroup.add(vrMenuBg);
-const vrMenuTitle = new THREE.Mesh(new THREE.PlaneGeometry(2.55,.26), new THREE.MeshBasicMaterial({map:makeMenuTexture('CHOOSE YOUR DOMAIN','Aim and press trigger'), depthTest:false, transparent:true}));
-vrMenuTitle.position.set(0,.66,-.005); vrDomainGroup.add(vrMenuTitle);
-const DOMAIN_MENU_ITEMS = [
-  ['void','Unlimited Void','Stun + heavy damage',-.67,.22],
-  ['shrine','Malevolent Shrine','Rapid slashing damage',.67,.22],
-  ['coffin','Coffin of the Iron Mountain','Volcanic heat damage',-.67,-.32],
-  ['shadow','Chimera Shadow Garden','Boosts shikigami damage',.67,-.32]
-];
-for (const [key,title,sub,x,y] of DOMAIN_MENU_ITEMS) {
-  const mat = new THREE.MeshBasicMaterial({map:makeMenuTexture(title,sub), transparent:true, depthTest:false, side:THREE.DoubleSide});
-  const card = new THREE.Mesh(new THREE.PlaneGeometry(1.27,.48),mat); card.position.set(x,y,0); card.userData.domain=key; vrDomainGroup.add(card); vrDomainButtons.push(card);
-}
-const vrRaycaster = new THREE.Raycaster();
+const vrInstruction = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.65, .68),
+  new THREE.MeshBasicMaterial({map:makeInstructionTexture('SELECT DOMAIN TO START\nHold the domain sign until it locks in'), transparent:true, depthTest:false, side:THREE.DoubleSide})
+);
+vrInstruction.position.set(0,0,0); vrDomainGroup.add(vrInstruction);
 function drawVrDomainMenu() {
-  if (!vrMenuTitle) return;
-  vrMenuTitle.material.map.dispose(); vrMenuTitle.material.map = makeMenuTexture(vrMenuMessage, 'Aim with either controller and press trigger'); vrMenuTitle.material.needsUpdate = true;
-}
-function selectDomainFromController(controller) {
-  if (!awaitingDomainPick || !renderer.xr.isPresenting || !vrDomainGroup.visible) return;
-  vrRaycaster.setFromXRController(controller);
-  const hits = vrRaycaster.intersectObjects(vrDomainButtons, false);
-  if (hits.length) chooseDomainInVR(hits[0].object.userData.domain);
+  vrInstruction.material.map.dispose();
+  vrInstruction.material.map = makeInstructionTexture(vrMenuMessage + '\nHold the domain sign until it locks in');
+  vrInstruction.material.needsUpdate = true;
 }
 const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(2, 5, 2); scene.add(sun);
 const amb = new THREE.AmbientLight(0xffffff, 0.6); scene.add(amb);
@@ -208,7 +199,7 @@ const A = (() => {
 })();
 ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(ev => addEventListener(ev, A.init, true));
 renderer.xr.addEventListener('sessionstart', A.init);
-[0, 1].forEach(i => { const c = renderer.xr.getController(i); c.addEventListener('selectstart', () => { A.init(); selectDomainFromController(c); }); scene.add(c); });
+[0, 1].forEach(i => { const c = renderer.xr.getController(i); c.addEventListener('selectstart', () => A.init()); scene.add(c); });
 
 /* ---------- Shaders ---------- */
 const GLSL = `
@@ -515,7 +506,7 @@ function analyze(hi) {
   if (n === 0 && isThumbsUp(hands[hi])) pose = 'thumbsup';
   return { raised, n, pose };
 }
-const state = [0, 1, 2].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
+const state = [0, 1, 2, 3].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
 const activatedAt = Object.create(null);
 let lastDomainActivation = -Infinity;
 let domainReadyAt = 0, rctReadyAt = 0;
@@ -529,8 +520,10 @@ function update(slot, sign, time) {
       const now = performance.now();
       const domainSign = !!DOMAIN_COST[sign];
       const last = activatedAt[sign] || 0;
-      if (!domainSign || (now - last >= DOMAIN_LOCKOUT * 1000 && now - lastDomainActivation >= DOMAIN_LOCKOUT * 1000)) {
-        trigger(sign); activatedAt[sign] = now;
+      if ((slot === 3 && awaitingDomainPick && domainSign) || !domainSign || (now - last >= DOMAIN_LOCKOUT * 1000 && now - lastDomainActivation >= DOMAIN_LOCKOUT * 1000)) {
+        if (slot === 3 && awaitingDomainPick && domainSign) chooseDomainInVR(sign);
+        else trigger(sign);
+        activatedAt[sign] = now;
         if (domainSign) lastDomainActivation = now;
       }
       st.fired = true;
@@ -701,8 +694,20 @@ renderer.setAnimationLoop(time => {
   const bothUp = !!(a && b && a.raised && b.raised);
   let two = null, wd = 99;
   if (a && b) { const w0 = jp(hands[0], 'wrist'), w1 = jp(hands[1], 'wrist'); if (w0 && w1) wd = w0.distanceTo(w1); }
+  const isIM = x => !!x && (x.pose === 'peace' || x.pose === 'cross');
+  let pickSign = null;
+  if (awaitingDomainPick && renderer.xr.isPresenting) {
+    // A domain's own symbol selects it; no pointer/menu selection is used.
+    if (info.some(x => x && x.raised && x.pose === 'cross')) pickSign = 'void';
+    else if (a && b && a.raised && b.raised && isIM(a) && isIM(b) && wd < SHRINE_D) pickSign = 'shrine';
+    else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
+      const m0 = jp(hands[0], 'middle-finger-tip'), m1 = jp(hands[1], 'middle-finger-tip');
+      if (m0 && m1 && m0.distanceTo(m1) < COFFIN_T) pickSign = 'coffin';
+    } else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
+  }
+  const wasPickingDomain = awaitingDomainPick;
+  update(3, pickSign, time);
   if (gameStarted && bothUp) {
-    const isIM = x => x.pose === 'peace' || x.pose === 'cross';
     if (chosenDomain === 'shadow' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
     else if (chosenDomain === 'shrine' && isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
     else if (a.pose === 'three' && b.pose === 'three' && wd < .42) two = 'mahoraga';
@@ -714,7 +719,7 @@ renderer.setAnimationLoop(time => {
   update(2, two, time);
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
-    if (gameStarted && !two && inf && inf.raised) {
+    if (gameStarted && !wasPickingDomain && !two && inf && inf.raised) {
       const voidGestureActive = info.some(x => x && x.raised && x.pose === 'cross');
       if (chosenDomain === 'void' && inf.pose === 'cross') s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
