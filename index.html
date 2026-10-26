@@ -83,11 +83,13 @@ const menuStatus = document.getElementById('menu-status');
 let vrButton = null;
 // Domain selection is deliberately an in-headset menu. The desktop DOM menu is hidden.
 domainMenu.style.display = 'none';
-function showDomainMenu(message = 'Choose your domain') {
-  awaitingDomainPick = true; gameStarted = false;
-  if (vrDomainGroup) vrDomainGroup.visible = true;
-  vrMenuMessage = message;
-  drawVrDomainMenu();
+function showVowMenu(message = 'CHOOSE A BINDING VOW') {
+  awaitingVowPick = true; awaitingDomainPick = false; gameStarted = false; prepareVowChoices();
+  if (vrDomainGroup) vrDomainGroup.visible = true; vrMenuMessage = message; drawVrDomainMenu();
+}
+function showDomainMenu(message = 'SELECT DOMAIN TO START') {
+  awaitingDomainPick = true; awaitingVowPick = false; gameStarted = false;
+  if (vrDomainGroup) vrDomainGroup.visible = true; vrMenuMessage = message; drawVrDomainMenu();
 }
 function hideDomainMenu() { if (vrDomainGroup) vrDomainGroup.visible = false; }
 function chooseDomainInVR(name) {
@@ -123,9 +125,9 @@ renderer.xr.enabled = true; renderer.xr.setFramebufferScaleFactor(RES); renderer
 document.body.appendChild(renderer.domElement);
 vrButton = VRButton.createButton(renderer); vrButton.disabled = false; document.body.appendChild(vrButton);
 renderer.xr.addEventListener('sessionstart', () => {
-  gameStarted = false; chosenDomain = null;
+  gameStarted = false; chosenDomain = null; awaitingDomainPick = false; awaitingVowPick = true; prepareVowChoices();
   Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
-  showDomainMenu('SELECT DOMAIN TO START');
+  showVowMenu('CHOOSE A BINDING VOW');
 });
 renderer.xr.addEventListener('sessionend', () => { gameStarted = false; awaitingDomainPick = true; hideDomainMenu(); });
 
@@ -142,15 +144,21 @@ function makeInstructionTexture(message) {
   x.textAlign = 'center'; x.fillStyle = '#fff'; x.font = 'bold 54px sans-serif';
   const lines = message.split('\n');
   lines.forEach((line,i) => { x.fillText(line,512,100+i*68); });
-  x.fillStyle = '#cdd5f7'; x.font = '30px sans-serif';
-  x.fillText('Unlimited Void: one raised thumbs-up',512,270);
-  x.fillText('Malevolent Shrine: two peace signs together',512,315);
-  x.fillText('Iron Mountain: hold both open palms side-by-side',512,360);
-  x.fillText('Shadow Garden: two fists together',512,405);
-  x.fillText('Todo: clap your open palms once',512,455);
-  x.fillText('During Todo: clap again to activate Boogie Woogie',512,485);
-  x.fillText('Hakari: point=Doors · peace=Rush · 3=Charge · fists=Jackpot',512,515);
-  x.fillText('Hakari: point both index fingers up like his dance to select',512,515);
+  x.fillStyle = '#cdd5f7'; x.font = '27px sans-serif';
+  if (awaitingVowPick) {
+    const opts = vowChoices.length ? vowChoices : (prepareVowChoices(), vowChoices);
+    opts.forEach((v,i) => { const y=245+i*72; x.fillStyle=['#ff8a80','#80d8ff','#d7a7ff'][i]; x.fillText((i+1)+'. '+v.name,512,y); x.fillStyle='#e4e7ff'; x.font='23px sans-serif'; x.fillText(v.desc,512,y+30); x.font='27px sans-serif'; });
+    x.fillText('Point = 1  ·  Peace sign = 2  ·  Three fingers = 3',512,485);
+    x.fillText('Your choice carries into the next run',512,518);
+  } else {
+    x.fillText('Unlimited Void: one raised thumbs-up',512,260);
+    x.fillText('Malevolent Shrine: two peace signs together',512,300);
+    x.fillText('Iron Mountain: both open palms side-by-side',512,340);
+    x.fillText('Shadow Garden: two fists together',512,380);
+    x.fillText('Todo: clap once  ·  Hakari: point both index fingers up',512,420);
+    x.fillText('Hakari: point=Doors · peace=Rush · 3=Charge · fists=Jackpot',512,460);
+    x.fillText('Hold the chosen sign steady until it locks in',512,500);
+  }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const vrInstruction = new THREE.Mesh(
@@ -931,31 +939,41 @@ function gameStep(dt, info, wd) {
     if (envName !== 'normal') swapTo('normal');
     Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
     awaitingVowPick = true;
-    showDomainMenu('RUN OVER — SCORE ' + finalScore + '\nBINDING VOW: POINT = GLASS CANNON · PEACE = EFFICIENT CE · THREE FINGERS = REINFORCEMENT');
+    showVowMenu('RUN OVER — SCORE ' + finalScore + '\nCHOOSE A BINDING VOW');
   }
   if (G.msgT > 0) G.msgT -= dt;
 }
 
 /* ---------- HUD ---------- */
-const hcv = document.createElement('canvas'); hcv.width = 768; hcv.height = 300;
+const hcv = document.createElement('canvas'); hcv.width = 1024; hcv.height = 420;
 const hx = hcv.getContext('2d'), hTex = new THREE.CanvasTexture(hcv); hTex.colorSpace = THREE.SRGBColorSpace;
 const hud = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthTest: true, depthWrite: false, fog: false }));
-hud.scale.set(.82, .32, 1); hud.position.set(0, -.31, -1.15); hud.renderOrder = 2; camera.add(hud);
+hud.scale.set(1.18, .48, 1); hud.position.set(0, -.34, -1.12); hud.renderOrder = 2; camera.add(hud);
 let hudT = 0;
 function drawHud(dbg) {
-  hx.clearRect(0, 0, 768, 300); hx.fillStyle = 'rgba(5,7,16,.78)'; hx.fillRect(0, 0, 768, 300); hx.strokeStyle = 'rgba(150,180,255,.65)'; hx.lineWidth = 2; hx.strokeRect(2,2,764,296);
-  const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(100, y, 620, 22); hx.fillStyle = col; hx.fillRect(100, y, 620 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
-  bar(16, G.hp / vowHpMax(), '#e0413a', 'HP'); bar(48, G.ce / CE_MAX, '#4aa8ff', 'CE');
-  hx.font = '23px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`WAVE ${G.wave}   SCORE ${G.score}   BEST ${G.best}`, 10, 105);
-  hx.font = '15px sans-serif'; hx.fillStyle = '#ff9df0'; hx.fillText('VOWS: ' + (activeVows.length ? activeVows.map(id => VOWS.find(v=>v.id===id)?.name).join(' · ') : 'none') + ' ('+activeVows.length+'/3)', 10, 122);
-  hx.font = '19px sans-serif'; hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : (!curses.length && gameStarted ? 'BETWEEN WAVES — HP regenerates ' + WAVE_HP_REGEN.toFixed(1) + '/s' : envName === 'normal' ? 'Domain ready: ' + (chosenDomain ? INFO[chosenDomain].en : 'choose one') + ' | CE regen 2.8/s' : 'DOMAIN: ' + INFO[envName].en + ' | CE drain ' + DOMAIN_DRAIN.toFixed(1) + '/s'), 10, 139);
-  const sec = ms => Math.max(0, ms - performance.now()) / 1000;
-  hx.font = '16px sans-serif'; hx.fillStyle = '#cdd8ff';
-  hx.fillText('CD  Dogs ' + sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1) + 's   Nue ' + sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1) + 's   Toad ' + sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1) + 's', 10, 174);
-  hx.fillText('Mahoraga ' + sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1) + 's   Domain ' + sec(domainReadyAt).toFixed(1) + 's   HP regen: 2.5/s between waves', 10, 201);
-  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   ' + (chosenDomain === 'void' ? 'Limitless: Point=Blue / Peace=Red / 3=Purple' : chosenDomain === 'shrine' ? 'Sukuna: Point=Dismantle / Peace=Cleave / 3=Fire Arrow' : chosenDomain === 'shadow' ? 'Ten Shadows: Point=Dogs / Peace=Nue / 3=Toad' : chosenDomain === 'todo' ? 'Todo: Point=Combo / Clap=Boogie Woogie' : 'Jogo: Point=Ember Insects / Peace=Flame Burst / 3=Meteor'), 10, 228);
-  if (DEBUG) { hx.font = '15px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 267); }
-  hTex.needsUpdate = true;
+  hud.visible = gameStarted;
+  hx.clearRect(0,0,1024,420);
+  const bg=hx.createLinearGradient(0,0,1024,420); bg.addColorStop(0,'rgba(7,12,28,.94)'); bg.addColorStop(1,'rgba(18,7,30,.90)');
+  hx.fillStyle=bg; hx.fillRect(0,0,1024,420); hx.strokeStyle='#8da8ff'; hx.lineWidth=3; hx.strokeRect(3,3,1018,414);
+  hx.fillStyle='#e8edff'; hx.font='bold 29px sans-serif'; hx.fillText('JUJUTSU TRIALS',24,39);
+  hx.fillStyle='#ffd166'; hx.font='bold 25px sans-serif'; hx.fillText(`WAVE ${G.wave}`,760,38); hx.fillStyle='#d4dcff'; hx.font='20px sans-serif'; hx.fillText(`SCORE ${G.score}  ·  BEST ${G.best}`,760,66);
+  const bar=(y,val,col,label,current,max)=>{ hx.fillStyle='#26304a'; hx.fillRect(130,y,860,27); hx.fillStyle=col; hx.fillRect(130,y,860*Math.max(0,Math.min(1,val)),27); hx.strokeStyle='rgba(255,255,255,.25)';hx.strokeRect(130,y,860,27);hx.fillStyle='#fff';hx.font='bold 22px sans-serif';hx.fillText(label,24,y+22);hx.textAlign='right';hx.fillText(`${Math.ceil(current)} / ${max}`,980,y+22);hx.textAlign='left'; };
+  bar(86,G.hp/vowHpMax(),'#ef5350','HP',G.hp,vowHpMax()); bar(126,G.ce/CE_MAX,'#42a5f5','CE',G.ce,CE_MAX);
+  hx.fillStyle='#f6b9ff';hx.font='bold 19px sans-serif';hx.fillText('ACTIVE BINDING VOWS',24,190);
+  hx.fillStyle='#fff';hx.font='18px sans-serif';
+  const vows=activeVows.map(id=>VOWS.find(v=>v.id===id)?.name).filter(Boolean);
+  hx.fillText(vows.length?vows.map((v,i)=>`${i+1}. ${v}`).join('     '):'No vows equipped',24,218);
+  hx.fillStyle='#bcd0ff';hx.font='18px sans-serif';
+  const status=G.msgT>0?G.msg:(!curses.length&&gameStarted?`BETWEEN WAVES · HP regenerates ${WAVE_HP_REGEN.toFixed(1)}/s`:envName==='normal'?`DOMAIN: ${chosenDomain?INFO[chosenDomain].en:'not selected'} · CE regen ${CE_REGEN.toFixed(1)}/s`:`ACTIVE DOMAIN: ${INFO[envName]?.en||envName} · CE drain ${DOMAIN_DRAIN.toFixed(1)}/s`);
+  hx.fillText(status.slice(0,86),24,258);
+  const sec=ms=>Math.max(0,ms-performance.now())/1000;
+  hx.fillStyle='#e4e9ff';hx.font='17px sans-serif';
+  hx.fillText(`SUMMON COOLDOWNS   Dogs ${sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1)}s   Nue ${sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1)}s   Toad ${sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1)}s`,24,302);
+  hx.fillText(`Mahoraga ${sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1)}s   Domain ${sec(domainReadyAt).toFixed(1)}s   Punch ${Math.max(...punchCd,0).toFixed(1)}s`,24,330);
+  const controls=chosenDomain==='void'?'GOJO  ·  Point: Blue  |  Peace: Red  |  Three: Purple':chosenDomain==='shrine'?'SUKUNA  ·  Point: Dismantle  |  Peace: Cleave  |  Three: Fire Arrow':chosenDomain==='shadow'?'MEGUMI  ·  Point: Dogs  |  Peace: Nue  |  Three: Toad':chosenDomain==='todo'?'TODO  ·  Point: Combo  |  Clap: Boogie Woogie':chosenDomain==='hakari'?'HAKARI  ·  Point: Doors  |  Peace: Rush  |  Three: Charge  |  Fists: Jackpot':'JOGO  ·  Point: Ember Insects  |  Peace: Flame Burst  |  Three: Meteor';
+  hx.fillStyle='#ffdc8b';hx.font='bold 18px sans-serif';hx.fillText(controls,24,365);
+  if(DEBUG){hx.fillStyle='#aab5d0';hx.font='15px sans-serif';hx.fillText((dbg||'')+(!SFX||A.ok()?'':' · pinch for sound'),24,397);}
+  hTex.needsUpdate=true;
 }
 const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 
