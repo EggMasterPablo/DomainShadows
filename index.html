@@ -249,11 +249,12 @@ function buildShadow() {   // Megumi: Chimera Shadow Garden
     vec2 gr=(vec2(n2(p*1.3+uTime*.15),n2(p*1.3+31.7-uTime*.12))-.5)*.35;float rip=sin(r*9.-uTime*3.)*(1.-smoothstep(.2,4.,r))*.12;
     vec3 n=normalize(vec3(gr.x+rip*p.x/(r+.01),1.,gr.y+rip*p.y/(r+.01)));float f=pow(1.-clamp(dot(v,n),0.,1.),3.);
     vec3 c=mix(vec3(.005,.005,.012),vec3(.78,.81,.87),clamp(f*1.1,0.,1.));c=mix(c,uFog,smoothstep(12.,70.,length(vW-cameraPosition)));gl_FragColor=vec4(c,1.);}`, { uFog: { value: raw(0xe8ebf1) } }));
-  const th = new THREE.Group(), bk = basic(0x000000);
+  const th = new THREE.Group();
+  const shadowBlackMaterial = basic(0x000000);
   g.add(th);
   for (let i = 0; i < 16; i++) { const a = rand(0, 6.283), r = rand(7, 38), h = rand(4, 10), x = Math.cos(a) * r, z = Math.sin(a) * r;
-    th.add(mesh(new THREE.CylinderGeometry(.07, .26, h, 6), bk, x, h / 2, z));
-    for (let k = 0; k < 3; k++) { const b = mesh(new THREE.ConeGeometry(.12, rand(1.5, 3), 5), bk, x + rand(-.8, .8), h * rand(.5, .95), z + rand(-.8, .8)); b.rotation.set(rand(-.9, .9), 0, rand(-.9, .9)); th.add(b); } }
+    th.add(mesh(new THREE.CylinderGeometry(.07, .26, h, 6), shadowBlackMaterial, x, h / 2, z));
+    for (let k = 0; k < 3; k++) { const b = mesh(new THREE.ConeGeometry(.12, rand(1.5, 3), 5), shadowBlackMaterial, x + rand(-.8, .8), h * rand(.5, .95), z + rand(-.8, .8)); b.rotation.set(rand(-.9, .9), 0, rand(-.9, .9)); th.add(b); } }
   const wl = [];
   [0, 0, 0, 0xf4f4f7, 0xf4f4f7].forEach((c, i) => { const w = makeWolf(c), a = -1.2 + i * .6, r = rand(4.5, 9); w.position.set(Math.sin(a) * r, 0, -Math.cos(a) * r); w.scale.setScalar(1.6); w.lookAt(0, 0, 0); w.userData.b = w.rotation.y; th.add(w); wl.push(w); });
   const sp = particles(300, 0x111118, .07, 16, 8, -.4, false); g.add(sp);
