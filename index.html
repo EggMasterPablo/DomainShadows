@@ -4,12 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Domain Expansion: Jujutsu Trials</title>
-<style>body{margin:0;background:#000}</style>
+<style>
+body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
+#domain-menu{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:radial-gradient(ellipse at center,#17172a 0%,#050509 72%);color:#fff;text-align:center}
+#domain-menu .panel{width:min(760px,100%);padding:26px 22px;border:1px solid #69698d;border-radius:20px;background:rgba(8,8,18,.94);box-shadow:0 0 38px #33336a}
+#domain-menu h1{font-size:clamp(26px,5vw,44px);margin:0 0 8px}#domain-menu p{color:#c6c6dd;margin:0 0 20px}
+#domain-menu .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+#domain-menu button{color:#fff;text-align:left;border:1px solid #666;border-radius:12px;padding:16px;background:#171728;cursor:pointer;font:inherit;transition:transform .12s,border-color .12s}
+#domain-menu button:hover,#domain-menu button:focus{transform:translateY(-2px);border-color:#fff;outline:none}
+#domain-menu button strong{display:block;font-size:18px;margin-bottom:5px}#domain-menu button span{display:block;color:#d2d2e6;font-size:13px;line-height:1.4}
+#domain-menu .hint{font-size:12px;color:#9999b5;margin-top:18px}
+</style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
 </head>
 <body>
+<div id="domain-menu" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+  <div class="panel">
+    <h1 id="menu-title">Choose Your Domain</h1>
+    <p>Choose one Domain Expansion for this run. You can only use the domain you select.</p>
+    <div class="choices">
+      <button data-domain="void"><strong>Unlimited Void</strong><span>Overwhelms and immobilizes curses while dealing heavy continuous damage.</span></button>
+      <button data-domain="shrine"><strong>Malevolent Shrine</strong><span>Highest sustained slashing damage; devastating against groups.</span></button>
+      <button data-domain="coffin"><strong>Coffin of the Iron Mountain</strong><span>Volcanic domain with powerful continuous heat damage.</span></button>
+      <button data-domain="shadow"><strong>Chimera Shadow Garden</strong><span>Shadow pressure plus a major boost to all shikigami damage.</span></button>
+    </div>
+    <div class="hint">Your choice lasts until you reload the page. You can still summon shikigami and use Reverse Cursed Technique.</div>
+  </div>
+</div>
 <script>
 function showErr(m){document.body.insertAdjacentHTML('beforeend','<pre style="position:fixed;top:0;left:0;right:0;z-index:99;margin:0;color:#f55;background:#000;font-size:18px;white-space:pre-wrap;padding:10px">'+m+'</pre>')}
 addEventListener('error',e=>showErr((e.message||'error')+' @ line '+e.lineno));
@@ -27,8 +50,14 @@ const SHRINE_D = 0.42, COFFIN_D = 0.34, COFFIN_T = 0.11, SHADOW_D = 0.28, GRACE 
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
 const HOLD = { void: 1250, shrine: 1450, coffin: 1350, shadow: 1400, normal: 850, dogs: 750, nue: 750, toad: 800, mahoraga: 1100 };
 const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
-const DOMAIN_COST = { void: 42, shrine: 48, coffin: 38, shadow: 44 };
-const CE_MAX = 100, CE_REGEN = 7, DOMAIN_DRAIN = 2.2, RCT_DRAIN = 12, RCT_HEAL = 8, DOMAIN_LOCKOUT = 3.5;
+const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40 };
+const CE_MAX = 100, CE_REGEN = 7, DOMAIN_DRAIN = 1.8, RCT_DRAIN = 12, RCT_HEAL = 8, DOMAIN_LOCKOUT = 3.5;
+let chosenDomain = null, gameStarted = false;
+const domainMenu = document.getElementById('domain-menu');
+domainMenu.querySelectorAll('button[data-domain]').forEach(button => button.addEventListener('click', () => {
+  chosenDomain = button.dataset.domain; gameStarted = true; domainMenu.style.display = 'none';
+  say('Chosen domain: ' + INFO[chosenDomain].en);
+}));
 
 /* ============ SIGNS ============
  Anime-inspired hand-sign recognition (hold steadily; two-hand signs take longer):
@@ -38,7 +67,7 @@ const CE_MAX = 100, CE_REGEN = 7, DOMAIN_DRAIN = 2.2, RCT_DRAIN = 12, RCT_HEAL =
    two fists held together = Chimera Shadow Garden | two three-finger signs together = Mahoraga
    Signs are gesture approximations based on tracked finger joints; hold times and release debounce reduce false activations.
  Fist punch fast at a curse = hit (chain hits for Black Flash)
- Both open palms low and together = Reverse Cursed Technique (heal)
+ Both fists with thumbs extended upward, held together = Reverse Cursed Technique (heal)
  Desktop test keys: 1-4 shikigami, V/S/C/H domains, N normal, Space = punch */
 
 /* ---------- Renderer / scene ---------- */
@@ -304,7 +333,7 @@ const say = (t, s = 2) => { G.msg = t; G.msgT = s; };
 const curses = [], shiki = [], fxs = [], tmpP = new THREE.Vector3();
 const playerPos = () => camera.getWorldPosition(tmpP);
 const CC = [0x5b2a86, 0xb5471c, 0x2f8a4a];   // curse types: slash / blast / poison
-const boost = () => envName === 'shadow' ? 2 : 1;  // Chimera Shadow Garden doubles shikigami damage
+const boost = () => envName === 'shadow' ? 3 : 1;  // Chimera Shadow Garden triples shikigami damage
 
 function nearest(pos, r = 99) {
   let b = null, bd = r;
@@ -384,6 +413,12 @@ function straightness(h, f) {
   const tot = pr.distanceTo(im) + im.distanceTo(di) + di.distanceTo(ti);
   return tot < 1e-4 ? null : pr.distanceTo(ti) / tot;
 }
+function isThumbsUp(h) {
+  const tip = jp(h, 'thumb-tip'), prox = jp(h, 'thumb-phalanx-proximal'), wrist = jp(h, 'wrist'), indexBase = jp(h, 'index-finger-metacarpal');
+  if (!tip || !prox || !wrist || !indexBase) return false;
+  // Thumb tip must point clearly above its base while the four long fingers are curled.
+  return tip.y > prox.y + 0.035 && tip.distanceTo(indexBase) > 0.045 && tip.distanceTo(wrist) > 0.07;
+}
 const fingerMem = [{}, {}];
 function fingerStates(hi) {
   const out = {};
@@ -409,6 +444,7 @@ function analyze(hi) {
   else if (e.index && e.middle && !e.ring && !e.pinky) pose = isCrossed(hands[hi]) ? 'cross' : 'peace';
   else if (e.index && e.middle && e.ring && !e.pinky) pose = 'three';
   else if (e.index && !e.middle && !e.ring && !e.pinky) pose = 'point';
+  if (n === 0 && isThumbsUp(hands[hi])) pose = 'thumbsup';
   return { raised, n, pose };
 }
 const state = [0, 1, 2].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
@@ -448,6 +484,8 @@ function swapTo(name) {
   A.setAmb(name); A.impact(name);
 }
 function requestDomain(name, force) {
+  if (name !== 'normal' && chosenDomain && name !== chosenDomain) { say('Your chosen domain is ' + INFO[chosenDomain].en); return; }
+  if (name !== 'normal' && !chosenDomain) { say('Choose a domain from the start menu first'); return; }
   if (pending || name === envName) return;
   if (name !== 'normal' && !force) { const cost = DOMAIN_COST[name] ?? 40; if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; } G.ce -= cost; say(INFO[name].en + ' — ' + cost + ' CE'); }
   pending = { name, phase: 0, t: 0 };
@@ -462,7 +500,7 @@ function gameStep(dt, info, wd) {
   if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
   else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
   // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
-  G.rct = !!(a && b && a.pose === 'open' && b.pose === 'open' && !a.raised && !b.raised && wd < .3 && G.ce > 0 && G.hp < 100);
+  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .48 && G.ce > 0 && G.hp < 100);
   if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
   // punches
   G.comboT -= dt;
@@ -474,7 +512,7 @@ function gameStep(dt, info, wd) {
     if (info[hi].pose === 'fist' && sp > 2 && punchCd[hi] <= 0) { const c = nearest(w, .55); if (c) { punchCd[hi] = .35; strike(c, sp); } }
   }
   // curses: drift to the player, domain damage, stun
-  const dd = { shrine: 12, coffin: 10, void: 3 }[envName] || 0;
+  const dd = { void: 14, shrine: 30, coffin: 22, shadow: 14 }[envName] || 0;
   for (const c of curses) {
     const pos = c.g.position; c.g.rotation.y += dt;
     if (c.hit > 0) { c.hit -= dt; if (c.hit <= 0) c.mat.color.setHex(c.base); }
@@ -557,7 +595,7 @@ function drawHud(dbg) {
   const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(90, y, 400, 22); hx.fillStyle = col; hx.fillRect(90, y, 400 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
   bar(12, G.hp / 100, '#e0413a', 'HP'); bar(44, G.ce / CE_MAX, '#4aa8ff', 'CE');
   hx.font = '24px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`Wave ${G.wave}   Score ${G.score}   Best ${G.best}`, 10, 100);
-  hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'Reverse Cursed Technique' : (envName === 'normal' ? 'Cursed Energy: recovering' : 'Domain: ' + INFO[envName].en + '  (-' + DOMAIN_DRAIN.toFixed(1) + ' CE/s)'), 10, 135);
+  hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'Reverse Cursed Technique (thumbs-up)' : (envName === 'normal' ? 'Chosen: ' + (chosenDomain ? INFO[chosenDomain].en : 'none') + ' | CE recovering' : 'Domain: ' + INFO[envName].en + '  (-' + DOMAIN_DRAIN.toFixed(1) + ' CE/s)'), 10, 135);
   if (DEBUG) { hx.font = '18px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 175); }
   hTex.needsUpdate = true;
 }
@@ -566,8 +604,8 @@ const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 /* Desktop test keys */
 const KEYS = { 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
 addEventListener('keydown', e => {
-  const k = KEYS[e.key.toLowerCase()]; if (k) trigger(k);
-  if (e.code === 'Space') { const c = nearest(new THREE.Vector3(0, 1.5, 0)); if (c) strike(c, 5); }
+  const k = KEYS[e.key.toLowerCase()]; if (k && gameStarted) trigger(k);
+  if (e.code === 'Space' && gameStarted) { const c = nearest(new THREE.Vector3(0, 1.5, 0)); if (c) strike(c, 5); }
 });
 
 /* ---------- Main loop ---------- */
@@ -578,12 +616,12 @@ renderer.setAnimationLoop(time => {
   const bothUp = !!(a && b && a.raised && b.raised);
   let two = null, wd = 99;
   if (a && b) { const w0 = jp(hands[0], 'wrist'), w1 = jp(hands[1], 'wrist'); if (w0 && w1) wd = w0.distanceTo(w1); }
-  if (bothUp) {
+  if (gameStarted && bothUp) {
     const isIM = x => x.pose === 'peace' || x.pose === 'cross';
-    if (a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
-    else if (isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
+    if (chosenDomain === 'shadow' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
+    else if (chosenDomain === 'shrine' && isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
     else if (a.pose === 'three' && b.pose === 'three' && wd < .42) two = 'mahoraga';
-    else if (a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
+    else if (chosenDomain === 'coffin' && a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
       const m0 = jp(hands[0], 'middle-finger-tip'), m1 = jp(hands[1], 'middle-finger-tip');
       if (m0 && m1 && m0.distanceTo(m1) < COFFIN_T) two = 'coffin';
     }
@@ -591,8 +629,8 @@ renderer.setAnimationLoop(time => {
   update(2, two, time);
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
-    if (!two && inf && inf.raised) {
-      if (inf.pose === 'cross') s = 'void';
+    if (gameStarted && !two && inf && inf.raised) {
+      if (chosenDomain === 'void' && inf.pose === 'cross') s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
       else if (inf.pose === 'point') s = 'dogs';
       else if (inf.pose === 'peace') s = 'nue';
@@ -600,8 +638,8 @@ renderer.setAnimationLoop(time => {
     }
     update(hi, s, time);
   }
-  gameStep(dt, info, wd);
-  hudT -= dt; if (hudT <= 0) { hudT = .1; drawHud('L: ' + desc(a) + '  R: ' + desc(b)); }
+  if (gameStarted) gameStep(dt, info, wd);
+  hudT -= dt; if (gameStarted && hudT <= 0) { hudT = .1; drawHud('L: ' + desc(a) + '  R: ' + desc(b)); }
 
   if (pending) {
     pending.t += dt;
