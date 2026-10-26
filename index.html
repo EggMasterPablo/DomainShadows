@@ -155,9 +155,8 @@ function makeInstructionTexture(message) {
     x.fillText('Malevolent Shrine: two peace signs together',512,300);
     x.fillText('Iron Mountain: both open palms side-by-side',512,340);
     x.fillText('Shadow Garden: two fists together',512,380);
-    x.fillText('Todo: clap once  ·  Hakari: point both index fingers up',512,420);
-    x.fillText('Hakari: point=Doors · peace=Rush · 3=Charge · fists=Jackpot',512,460);
-    x.fillText('Hold the chosen sign steady until it locks in',512,500);
+    x.fillText('Todo: clap once  ·  Hakari: both index fingers up',512,420);
+    x.fillText('Hold the chosen sign steady until it locks in',512,465);
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
@@ -944,35 +943,37 @@ function gameStep(dt, info, wd) {
   if (G.msgT > 0) G.msgT -= dt;
 }
 
-/* ---------- HUD ---------- */
+/* ---------- Compact modular VR HUD ---------- */
 const hcv = document.createElement('canvas'); hcv.width = 1024; hcv.height = 420;
 const hx = hcv.getContext('2d'), hTex = new THREE.CanvasTexture(hcv); hTex.colorSpace = THREE.SRGBColorSpace;
 const hud = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthTest: true, depthWrite: false, fog: false }));
-hud.scale.set(1.18, .48, 1); hud.position.set(0, -.34, -1.12); hud.renderOrder = 2; camera.add(hud);
+hud.scale.set(.92, .36, 1); hud.position.set(0, -.30, -1.15); hud.renderOrder = 2; camera.add(hud);
 let hudT = 0;
 function drawHud(dbg) {
   hud.visible = gameStarted;
   hx.clearRect(0,0,1024,420);
-  const bg=hx.createLinearGradient(0,0,1024,420); bg.addColorStop(0,'rgba(7,12,28,.94)'); bg.addColorStop(1,'rgba(18,7,30,.90)');
-  hx.fillStyle=bg; hx.fillRect(0,0,1024,420); hx.strokeStyle='#8da8ff'; hx.lineWidth=3; hx.strokeRect(3,3,1018,414);
-  hx.fillStyle='#e8edff'; hx.font='bold 29px sans-serif'; hx.fillText('JUJUTSU TRIALS',24,39);
-  hx.fillStyle='#ffd166'; hx.font='bold 25px sans-serif'; hx.fillText(`WAVE ${G.wave}`,760,38); hx.fillStyle='#d4dcff'; hx.font='20px sans-serif'; hx.fillText(`SCORE ${G.score}  ·  BEST ${G.best}`,760,66);
-  const bar=(y,val,col,label,current,max)=>{ hx.fillStyle='#26304a'; hx.fillRect(130,y,860,27); hx.fillStyle=col; hx.fillRect(130,y,860*Math.max(0,Math.min(1,val)),27); hx.strokeStyle='rgba(255,255,255,.25)';hx.strokeRect(130,y,860,27);hx.fillStyle='#fff';hx.font='bold 22px sans-serif';hx.fillText(label,24,y+22);hx.textAlign='right';hx.fillText(`${Math.ceil(current)} / ${max}`,980,y+22);hx.textAlign='left'; };
-  bar(86,G.hp/vowHpMax(),'#ef5350','HP',G.hp,vowHpMax()); bar(126,G.ce/CE_MAX,'#42a5f5','CE',G.ce,CE_MAX);
-  hx.fillStyle='#f6b9ff';hx.font='bold 19px sans-serif';hx.fillText('ACTIVE BINDING VOWS',24,190);
-  hx.fillStyle='#fff';hx.font='18px sans-serif';
+  const card=(x,y,w,h,title,accent='#8da8ff')=>{ hx.fillStyle='rgba(7,12,28,.88)'; hx.beginPath(); hx.roundRect(x,y,w,h,18); hx.fill(); hx.strokeStyle=accent; hx.lineWidth=3; hx.stroke(); hx.fillStyle=accent; hx.font='bold 19px sans-serif'; hx.fillText(title,x+16,y+27); };
+  const bar=(x,y,w,val,col,label,current,max)=>{ hx.fillStyle='#26304a';hx.fillRect(x,y,w,16);hx.fillStyle=col;hx.fillRect(x,y,w*Math.max(0,Math.min(1,val)),16);hx.strokeStyle='rgba(255,255,255,.35)';hx.strokeRect(x,y,w,16);hx.fillStyle='#fff';hx.font='bold 16px sans-serif';hx.fillText(label,x,y-5);hx.textAlign='right';hx.fillText(`${Math.ceil(current)}/${max}`,x+w,y-5);hx.textAlign='left'; };
+  card(8,8,300,100,'PLAYER STATUS','#ef8794');
+  bar(24,58,265,G.hp/vowHpMax(),'#ef5350','HP',G.hp,vowHpMax());
+  bar(24,91,265,G.ce/CE_MAX,'#42a5f5','CE',G.ce,CE_MAX);
+  card(320,8,210,100,'RUN','#ffd166');
+  hx.fillStyle='#fff';hx.font='bold 22px sans-serif';hx.fillText(`WAVE ${G.wave}`,338,62);hx.font='18px sans-serif';hx.fillText(`SCORE ${G.score}`,338,88);hx.fillText(`BEST ${G.best}`,338,105);
+  card(542,8,474,100,'BINDING VOWS','#e3a4ff');
   const vows=activeVows.map(id=>VOWS.find(v=>v.id===id)?.name).filter(Boolean);
-  hx.fillText(vows.length?vows.map((v,i)=>`${i+1}. ${v}`).join('     '):'No vows equipped',24,218);
-  hx.fillStyle='#bcd0ff';hx.font='18px sans-serif';
-  const status=G.msgT>0?G.msg:(!curses.length&&gameStarted?`BETWEEN WAVES · HP regenerates ${WAVE_HP_REGEN.toFixed(1)}/s`:envName==='normal'?`DOMAIN: ${chosenDomain?INFO[chosenDomain].en:'not selected'} · CE regen ${CE_REGEN.toFixed(1)}/s`:`ACTIVE DOMAIN: ${INFO[envName]?.en||envName} · CE drain ${DOMAIN_DRAIN.toFixed(1)}/s`);
-  hx.fillText(status.slice(0,86),24,258);
+  hx.fillStyle='#fff';hx.font='18px sans-serif';
+  if(vows.length) vows.forEach((v,i)=>{hx.fillStyle=['#ffb1a9','#9de4ff','#e3b6ff'][i];hx.fillText(`${i+1}. ${v}`,558+(i%2)*220,63+Math.floor(i/2)*27);}); else hx.fillText('No vows equipped',558,65);
+  card(8,122,410,116,'STATUS','#8de3c0');
+  const status=G.msgT>0?G.msg:(!curses.length&&gameStarted?`BETWEEN WAVES · HP +${WAVE_HP_REGEN.toFixed(1)}/s`:envName==='normal'?`CE REGEN ${CE_REGEN.toFixed(1)}/s`:`DOMAIN ACTIVE · CE DRAIN ${DOMAIN_DRAIN.toFixed(1)}/s`);
+  hx.fillStyle='#fff';hx.font='17px sans-serif'; const words=status.split(' '); let line='', yy=174;
+  for(const word of words){const test=line?line+' '+word:word;if(hx.measureText(test).width>365){hx.fillText(line,24,yy);line=word;yy+=23;}else line=test;} if(line)hx.fillText(line,24,yy);
+  card(430,122,586,116,'MOVES & COOLDOWNS','#9dbaff');
+  const controls=chosenDomain==='void'?'GOJO · Point Blue | Peace Red | Three Purple':chosenDomain==='shrine'?'SUKUNA · Point Dismantle | Peace Cleave | Three Fire Arrow':chosenDomain==='shadow'?'MEGUMI · Point Dogs | Peace Nue | Three Toad':chosenDomain==='todo'?'TODO · Point Combo | Clap Boogie Woogie':chosenDomain==='hakari'?'HAKARI · Point Doors | Peace Rush | Three Charge | Fists Jackpot':'JOGO · Point Ember Insects | Peace Flame Burst | Three Meteor';
+  hx.fillStyle='#fff';hx.font='16px sans-serif';hx.fillText(controls,446,174,550);
   const sec=ms=>Math.max(0,ms-performance.now())/1000;
-  hx.fillStyle='#e4e9ff';hx.font='17px sans-serif';
-  hx.fillText(`SUMMON COOLDOWNS   Dogs ${sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1)}s   Nue ${sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1)}s   Toad ${sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1)}s`,24,302);
-  hx.fillText(`Mahoraga ${sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1)}s   Domain ${sec(domainReadyAt).toFixed(1)}s   Punch ${Math.max(...punchCd,0).toFixed(1)}s`,24,330);
-  const controls=chosenDomain==='void'?'GOJO  ·  Point: Blue  |  Peace: Red  |  Three: Purple':chosenDomain==='shrine'?'SUKUNA  ·  Point: Dismantle  |  Peace: Cleave  |  Three: Fire Arrow':chosenDomain==='shadow'?'MEGUMI  ·  Point: Dogs  |  Peace: Nue  |  Three: Toad':chosenDomain==='todo'?'TODO  ·  Point: Combo  |  Clap: Boogie Woogie':chosenDomain==='hakari'?'HAKARI  ·  Point: Doors  |  Peace: Rush  |  Three: Charge  |  Fists: Jackpot':'JOGO  ·  Point: Ember Insects  |  Peace: Flame Burst  |  Three: Meteor';
-  hx.fillStyle='#ffdc8b';hx.font='bold 18px sans-serif';hx.fillText(controls,24,365);
-  if(DEBUG){hx.fillStyle='#aab5d0';hx.font='15px sans-serif';hx.fillText((dbg||'')+(!SFX||A.ok()?'':' · pinch for sound'),24,397);}
+  hx.fillStyle='#d5ddff';hx.font='15px sans-serif';hx.fillText(`Dogs ${sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(0)}s · Nue ${sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(0)}s · Toad ${sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(0)}s`,446,203);
+  hx.fillText(`Domain ${sec(domainReadyAt).toFixed(1)}s · Punch ${Math.max(...punchCd,0).toFixed(1)}s`,446,226);
+  if(DEBUG){hx.fillStyle='#aab5d0';hx.font='13px sans-serif';hx.fillText((dbg||'')+(!SFX||A.ok()?'':' · pinch for sound'),18,407,980);}
   hTex.needsUpdate=true;
 }
 const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
@@ -1005,7 +1006,7 @@ renderer.setAnimationLoop(time => {
     if (info.some(x => x && x.raised && x.pose === 'thumbsup')) pickSign = 'void';
     else if (a && b && a.raised && b.raised && isIM(a) && isIM(b) && wd < SHRINE_D) pickSign = 'shrine';
     else if (a && b && a.raised && b.raised && a.pose === 'point' && b.pose === 'point' && wd > 0.35) pickSign = 'hakari';
-    else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < 0.58) pickSign = 'coffin'; else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
+    else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < 0.58 && wd > 0.23) pickSign = 'coffin'; else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
   }
   // One clap selects Todo at the picker; another clap during play activates Boogie Woogie.
   // Require palms to start apart, then come together, so simply holding them together won't trigger.
