@@ -23,16 +23,20 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 /* ============ TUNING ============ */
 const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
 const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.035;
-const SHRINE_D = 0.5, COFFIN_D = 0.5, COFFIN_T = 0.09, SHADOW_D = 0.3, GRACE = 200;
-const HOLD = { void: 250, shrine: 350, coffin: 350, shadow: 350, normal: 600, dogs: 600, nue: 600, toad: 600, mahoraga: 450 };
-const COST = { dogs: 20, nue: 30, toad: 25, mahoraga: 70, domain: 25 };
-const CE_MAX = 100, CE_REGEN = 4, DOMAIN_DRAIN = 5;
+const SHRINE_D = 0.42, COFFIN_D = 0.34, COFFIN_T = 0.11, SHADOW_D = 0.28, GRACE = 180;
+// Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
+const HOLD = { void: 1250, shrine: 1450, coffin: 1350, shadow: 1400, normal: 850, dogs: 750, nue: 750, toad: 800, mahoraga: 1100 };
+const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
+const DOMAIN_COST = { void: 42, shrine: 48, coffin: 38, shadow: 44 };
+const CE_MAX = 100, CE_REGEN = 7, DOMAIN_DRAIN = 2.2, RCT_DRAIN = 12, RCT_HEAL = 8, DOMAIN_LOCKOUT = 3.5;
 
 /* ============ SIGNS ============
- Raised hand, hold:  crossed fingers = Unlimited Void | open palm = back to normal
-   index only = Divine Dogs | peace = Nue | three fingers = Max Toad
- Two hands: peace+peace = Malevolent Shrine | mountain (fingertips touching) = Coffin
-   clasped fists = Chimera Shadow Garden | three+three = Mahoraga (Eight-Handled Sword)
+ Anime-inspired hand-sign recognition (hold steadily; two-hand signs take longer):
+   raised crossed index/middle = Unlimited Void | raised open palm = leave domain
+   raised index = Divine Dogs | raised peace sign = Nue | raised three-finger sign = Max Toad
+   two raised peace signs held close = Malevolent Shrine | palms/fingertips pressed together = Coffin of the Iron Mountain
+   two fists held together = Chimera Shadow Garden | two three-finger signs together = Mahoraga
+   Signs are gesture approximations based on tracked finger joints; hold times and release debounce reduce false activations.
  Fist punch fast at a curse = hit (chain hits for Black Flash)
  Both open palms low and together = Reverse Cursed Technique (heal)
  Desktop test keys: 1-4 shikigami, V/S/C/H domains, N normal, Space = punch */
@@ -408,12 +412,24 @@ function analyze(hi) {
   return { raised, n, pose };
 }
 const state = [0, 1, 2].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
+const activatedAt = Object.create(null);
+let lastDomainActivation = -Infinity;
 function update(slot, sign, time) {
   const st = state[slot];
   if (sign) {
     st.nullSince = 0;
     if (sign !== st.cand) { st.cand = sign; st.since = time; st.fired = false; }
-    else if (!st.fired && time - st.since > (HOLD[sign] || 300)) { trigger(sign); st.fired = true; }
+    else if (!st.fired && time - st.since >= (HOLD[sign] || 800)) {
+      // A sign can only fire once per continuous hold. Domains also have a short global lockout.
+      const now = performance.now();
+      const domainSign = !!DOMAIN_COST[sign];
+      const last = activatedAt[sign] || 0;
+      if (!domainSign || (now - last >= DOMAIN_LOCKOUT * 1000 && now - lastDomainActivation >= DOMAIN_LOCKOUT * 1000)) {
+        trigger(sign); activatedAt[sign] = now;
+        if (domainSign) lastDomainActivation = now;
+      }
+      st.fired = true;
+    }
   } else if (st.cand) {
     if (!st.nullSince) st.nullSince = time;
     if (time - st.nullSince > GRACE) { st.cand = null; st.fired = false; st.nullSince = 0; }
@@ -433,7 +449,7 @@ function swapTo(name) {
 }
 function requestDomain(name, force) {
   if (pending || name === envName) return;
-  if (name !== 'normal' && !force) { if (G.ce < COST.domain) { say('Not enough cursed energy'); return; } G.ce -= COST.domain; }
+  if (name !== 'normal' && !force) { const cost = DOMAIN_COST[name] ?? 40; if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; } G.ce -= cost; say(INFO[name].en + ' — ' + cost + ' CE'); }
   pending = { name, phase: 0, t: 0 };
   flashMat.color.set(INFO[name].flash); flash.visible = true; A.riser();
 }
@@ -442,12 +458,12 @@ function requestDomain(name, force) {
 const prevW = [null, null], punchCd = [0, 0];
 function gameStep(dt, info, wd) {
   const t = TIME.value, pp = playerPos().clone(), [a, b] = info;
-  // cursed energy: regenerates normally, drains while a domain is held
+  // Cursed energy: steady recovery outside domains; domains are powerful but costly to maintain.
   if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
-  else { G.ce -= DOMAIN_DRAIN * dt; if (G.ce <= 0) { G.ce = 0; requestDomain('normal', true); say('Cursed energy exhausted'); } }
-  // Reverse Cursed Technique
-  G.rct = !!(a && b && a.pose === 'open' && b.pose === 'open' && !a.raised && !b.raised && wd < .3 && G.ce > 0);
-  if (G.rct) { G.hp = Math.min(100, G.hp + 10 * dt); G.ce = Math.max(0, G.ce - 8 * dt); }
+  else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
+  // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
+  G.rct = !!(a && b && a.pose === 'open' && b.pose === 'open' && !a.raised && !b.raised && wd < .3 && G.ce > 0 && G.hp < 100);
+  if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
   // punches
   G.comboT -= dt;
   for (let hi = 0; hi < 2; hi++) {
@@ -541,7 +557,7 @@ function drawHud(dbg) {
   const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(90, y, 400, 22); hx.fillStyle = col; hx.fillRect(90, y, 400 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
   bar(12, G.hp / 100, '#e0413a', 'HP'); bar(44, G.ce / CE_MAX, '#4aa8ff', 'CE');
   hx.font = '24px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`Wave ${G.wave}   Score ${G.score}   Best ${G.best}`, 10, 100);
-  hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'Reverse Cursed Technique' : 'Domain: ' + INFO[envName].en, 10, 135);
+  hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'Reverse Cursed Technique' : (envName === 'normal' ? 'Cursed Energy: recovering' : 'Domain: ' + INFO[envName].en + '  (-' + DOMAIN_DRAIN.toFixed(1) + ' CE/s)'), 10, 135);
   if (DEBUG) { hx.font = '18px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 175); }
   hTex.needsUpdate = true;
 }
@@ -566,8 +582,8 @@ renderer.setAnimationLoop(time => {
     const isIM = x => x.pose === 'peace' || x.pose === 'cross';
     if (a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
     else if (isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
-    else if (a.pose === 'three' && b.pose === 'three' && wd < .6) two = 'mahoraga';
-    else if (a.n === 4 && b.n === 4 && wd < COFFIN_D) {
+    else if (a.pose === 'three' && b.pose === 'three' && wd < .42) two = 'mahoraga';
+    else if (a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
       const m0 = jp(hands[0], 'middle-finger-tip'), m1 = jp(hands[1], 'middle-finger-tip');
       if (m0 && m1 && m0.distanceTo(m1) < COFFIN_T) two = 'coffin';
     }
