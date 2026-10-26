@@ -50,13 +50,34 @@ const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
 const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.032;
 const SHRINE_D = 0.44, COFFIN_D = 0.38, COFFIN_T = 0.12, SHADOW_D = 0.32, GRACE = 260;
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
-const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850, blue: 550, red: 650, purple: 850, dismantle: 500, cleave: 600, firearrow: 800 };
-const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62, blue: 14, red: 20, purple: 38, dismantle: 10, cleave: 16, firearrow: 30 };
-const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24, blue: 3, red: 5, purple: 12, dismantle: 2, cleave: 3, firearrow: 9 };
-const DOMAIN_COOLDOWN = 14, RCT_COOLDOWN = 5, PUNCH_COOLDOWN = 0.65;
-const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40 };
-const CE_MAX = 100, CE_REGEN = 2.8, DOMAIN_DRAIN = 7.5, RCT_DRAIN = 18, RCT_HEAL = 7, DOMAIN_LOCKOUT = 14;
+const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, todo: 760, hakari: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850, blue: 550, red: 650, purple: 850, dismantle: 500, cleave: 600, firearrow: 800, embers: 500, flameburst: 650, meteor: 850, playfulcloud: 550 };
+const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62, blue: 18, red: 24, purple: 42, dismantle: 12, cleave: 20, firearrow: 30, embers: 14, flameburst: 23, meteor: 48, playfulcloud: 16, doors: 14, rush: 20, shoulder: 18 };
+const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24, blue: 4.5, red: 6.5, purple: 14, dismantle: 1.6, cleave: 3.8, firearrow: 9, embers: 4.2, flameburst: 6.5, meteor: 18, playfulcloud: 4.5 };
+const DOMAIN_COOLDOWN = 14, PUNCH_COOLDOWN = 0.65;
+const HAKARI_COST = { doors: 14, rush: 20, shoulder: 18 };
+const HAKARI_CD = { doors: 5, rush: 4, shoulder: 6 };
+let hakariFeverUntil = 0, hakariLastMove = {}; 
+const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40, todo: 1, hakari: 1 };
+const CE_MAX = 100, CE_REGEN = 2.8, DOMAIN_DRAIN = 7.5, DOMAIN_LOCKOUT = 14, WAVE_HP_REGEN = 2.5;
 let chosenDomain = null, gameStarted = false, awaitingDomainPick = true;
+let awaitingVowPick = false;
+const activeVows = []; let vowChoices = [];
+const VOWS = [
+  {id:'glass', name:'Glass Cannon', desc:'+25% damage, -20 max HP', damage:1.25, hpMax:80},
+  {id:'efficient', name:'Efficient CE', desc:'Techniques cost 20% less CE', ceCost:.8},
+  {id:'reinforce', name:'Reinforcement', desc:'+20 max HP, -15% damage', hpMax:120, damage:.85},
+  {id:'quick', name:'Quick Casting', desc:'Cooldowns 15% shorter, -10% damage', cooldown:.85, damage:.9},
+  {id:'domain', name:'Domain Specialist', desc:'Domains last longer, cost more CE', domainDrain:1.15}
+];
+function vowDamage(){ return activeVows.reduce((v,id)=>v*(VOWS.find(x=>x.id===id)?.damage||1),1); }
+function vowHpMax(){ return activeVows.reduce((v,id)=>v+(VOWS.find(x=>x.id===id)?.hpMax===120?20:VOWS.find(x=>x.id===id)?.hpMax===80?-20:0),100); }
+function prepareVowChoices(){ vowChoices = [...VOWS].sort(()=>Math.random()-.5).slice(0,3); }
+function applyVowPick(index){
+  const vow=vowChoices[index];
+  if(!vow)return; const existing=activeVows.indexOf(vow.id); if(existing>=0) activeVows.splice(existing,1);
+  else { if(activeVows.length>=3) activeVows.shift(); activeVows.push(vow.id); }
+  awaitingVowPick=false; say('BINDING VOW: '+vow.name+' — '+vow.desc,4); showDomainMenu('VOW LOCKED: '+vow.name+'\nSELECT YOUR DOMAIN TO START');
+}
 const domainMenu = document.getElementById('domain-menu');
 const menuStatus = document.getElementById('menu-status');
 let vrButton = null;
@@ -71,19 +92,21 @@ function showDomainMenu(message = 'Choose your domain') {
 function hideDomainMenu() { if (vrDomainGroup) vrDomainGroup.visible = false; }
 function chooseDomainInVR(name) {
   if (!awaitingDomainPick || !renderer.xr.isPresenting) return;
-  chosenDomain = name; awaitingDomainPick = false; hideDomainMenu();
-  Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
+  chosenDomain = name; awaitingDomainPick = false; awaitingVowPick = false; hideDomainMenu();
+  Object.assign(G, { hp: vowHpMax(), ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
   curses.length = 0; shiki.length = 0; fxs.length = 0; pending = null;
   if (envName !== 'normal') swapTo('normal');
   gameStarted = true; G.nextWave = 1.5;
-  say('Chosen domain: ' + INFO[chosenDomain].en + ' — survive the curses');
+  if (chosenDomain === 'todo') { if (envName !== 'normal') swapTo('normal'); say('TODO MOVESET: clap your open palms for BOOGIE WOOGIE; point for Todo’s close-range combo'); }
+  else if (chosenDomain === 'hakari') say('HAKARI: point = Sliding Doors · peace = Rush Combo · three fingers = Shoulder Charge · fists together = Idle Death Gamble');
+  else say('Chosen domain: ' + INFO[chosenDomain].en + ' — survive the curses');
 }
 
 /* ============ SIGNS ============
  Anime-inspired hand-sign recognition (hold steadily; two-hand signs take longer):
    single raised thumbs-up = Unlimited Void | raised open palm = leave domain
    raised index = Divine Dogs | raised peace sign = Nue | raised three-finger sign = Max Toad
-   two raised peace signs held close = Malevolent Shrine | two open palms held side-by-side = Coffin of the Iron Mountain
+   two raised peace signs held close = Malevolent Shrine | two open palms held side-by-side = Coffin of the Iron Mountain | two index fingers pointed up = Hakari
    two fists held together = Chimera Shadow Garden | two three-finger signs together = Mahoraga
    Signs are gesture approximations based on tracked finger joints; hold times and release debounce reduce false activations.
  Fist punch fast at a curse = hit (chain hits for Black Flash)
@@ -112,7 +135,7 @@ let vrMenuMessage = 'SELECT DOMAIN TO START';
 const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainInstruction';
 vrDomainGroup.position.set(0, 0, -1.9); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
 function makeInstructionTexture(message) {
-  const c = document.createElement('canvas'); c.width = 1024; c.height = 420;
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 530;
   const x = c.getContext('2d');
   x.fillStyle = 'rgba(7,9,19,.94)'; x.fillRect(0,0,c.width,c.height);
   x.strokeStyle = '#a5b4fc'; x.lineWidth = 8; x.strokeRect(5,5,c.width-10,c.height-10);
@@ -124,10 +147,14 @@ function makeInstructionTexture(message) {
   x.fillText('Malevolent Shrine: two peace signs together',512,315);
   x.fillText('Iron Mountain: hold both open palms side-by-side',512,360);
   x.fillText('Shadow Garden: two fists together',512,405);
+  x.fillText('Todo: clap your open palms once',512,455);
+  x.fillText('During Todo: clap again to activate Boogie Woogie',512,485);
+  x.fillText('Hakari: point=Doors · peace=Rush · 3=Charge · fists=Jackpot',512,515);
+  x.fillText('Hakari: point both index fingers up like his dance to select',512,515);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const vrInstruction = new THREE.Mesh(
-  new THREE.PlaneGeometry(1.65, .68),
+  new THREE.PlaneGeometry(1.65, .86),
   new THREE.MeshBasicMaterial({map:makeInstructionTexture('SELECT DOMAIN TO START\nHold the domain sign until it locks in'), transparent:true, depthTest:true, depthWrite:false, side:THREE.DoubleSide})
 );
 vrInstruction.position.set(0,0,0); vrDomainGroup.add(vrInstruction);
@@ -359,6 +386,8 @@ const INFO = {
   shrine: { en: 'Malevolent Shrine', jp: '伏魔御廚子', col: '#ff3a30', flash: 0xff1a10 },
   coffin: { en: 'Coffin of the Iron Mountain', jp: '蓋棺鉄囲山', col: '#ff9a3a', flash: 0xff7a1a },
   shadow: { en: 'Chimera Shadow Garden', jp: '嵌合暗翳庭', col: '#7a86ff', flash: 0x000000 },
+  todo:   { en: 'Aoi Todo — Boogie Woogie', jp: '不義遊戯', col: '#f2c14e', flash: 0xffd24a },
+  hakari: { en: 'Kinji Hakari — Idle Death Gamble', jp: '坐殺博徒', col: '#ff4fd8', flash: 0xff4fd8 },
 };
 function applyEnv(e) {
   scene.background = new THREE.Color(e.bg); scene.fog.color.set(e.fog[0]); scene.fog.density = e.fog[1];
@@ -384,13 +413,13 @@ function drawTitle(name) {
 
 /* ================= GAME STATE: curses, shikigami, effects ================= */
 const world = new THREE.Group(); scene.add(world);
-const G = { hp: 100, ce: 100, wave: 0, score: 0, best: 0, msg: '', msgT: 0, combo: 0, comboT: 0, nextWave: 1.5, adapt: [0, 0, 0], rct: false };
+const G = { hp: 100, ce: 100, wave: 0, score: 0, best: 0, msg: '', msgT: 0, combo: 0, comboT: 0, nextWave: 1.5, adapt: [0, 0, 0] };
 try { G.best = +localStorage.getItem('jjkBest') || 0; } catch (e) {}
 const say = (t, s = 2) => { G.msg = t; G.msgT = s; };
 const curses = [], shiki = [], fxs = [], tmpP = new THREE.Vector3();
 const playerPos = () => camera.getWorldPosition(tmpP);
 const CC = [0x5b2a86, 0xb5471c, 0x2f8a4a];   // curse types: slash / blast / poison
-const boost = () => envName === 'shadow' ? 3 : 1;  // Chimera Shadow Garden triples shikigami damage
+const boost = () => (envName === 'shadow' ? 3 : 1) * vowDamage();  // Domain and active Binding Vows
 
 function nearest(pos, r = 99) {
   let b = null, bd = r;
@@ -400,8 +429,20 @@ function nearest(pos, r = 99) {
 function hurt(c, d) { c.hp -= d; c.hit = .12; c.mat.color.set(0xffffff); }
 function fxBall(p, col, size, dur = .35) { const m = mesh(new THREE.SphereGeometry(1, 10, 8), glow(col, .9)); m.position.copy(p); m.scale.setScalar(.01); world.add(m); fxs.push({ m, t: 0, dur, size }); }
 function fxLine(a, b, col, dur = .18, w = .04) {
-  const d = b.clone().sub(a), len = d.length(), m = mesh(new THREE.BoxGeometry(w, w, len), glow(col, 1));
-  m.position.copy(a).add(b).multiplyScalar(.5); m.quaternion.setFromUnitVectors(ZAX, d.normalize()); world.add(m); fxs.push({ m, t: 0, dur, size: 0 });
+  const d = b.clone().sub(a), len = d.length(), m = mesh(new THREE.BoxGeometry(w, w, Math.max(.02, len)), glow(col, 1));
+  m.position.copy(a).add(b).multiplyScalar(.5); m.quaternion.setFromUnitVectors(ZAX, d.normalize()); world.add(m); fxs.push({ m, t: 0, dur, size: 0 }); return m;
+}
+function fxRing(p, col, radius = 1, dur = .35, horizontal = false) {
+  const m = mesh(new THREE.TorusGeometry(.78, .035, 8, 48), glow(col, 1)); m.position.copy(p); if (horizontal) m.rotation.x = Math.PI / 2;
+  m.scale.setScalar(.01); world.add(m); fxs.push({ m, t: 0, dur, size: radius }); return m;
+}
+function fxSlash(p, dir, color = 0xff344d, spread = 1, dur = .22) {
+  const forward = dir.clone().normalize(), side = new THREE.Vector3(-forward.z, .12, forward.x).normalize();
+  for (let i = 0; i < 3; i++) {
+    const offset = (i - 1) * spread * .16, mid = p.clone().addScaledVector(side, offset);
+    const sl = side.clone().multiplyScalar(spread * (i === 1 ? .9 : .62)).addScaledVector(forward, (i - 1) * .12);
+    fxLine(mid.clone().add(sl), mid.clone().sub(sl), i === 1 ? 0xffffff : color, dur, i === 1 ? .025 : .045);
+  }
 }
 
 function spawnCurse() {
@@ -458,25 +499,114 @@ function summon(kind) {
   }
 }
 function useTechnique(kind) {
+  // Each selected domain grants its own character's technique set.
+  if (chosenDomain === 'shadow' || !['void','shrine','coffin','todo'].includes(chosenDomain)) {
+    say('Megumi uses Ten Shadows — summon a shikigami'); return;
+  }
+  if (chosenDomain === 'void' && !['blue','red','purple'].includes(kind)) return;
+  if (chosenDomain === 'shrine' && !['dismantle','cleave','firearrow'].includes(kind)) return;
+  if (chosenDomain === 'coffin' && !['embers','flameburst','meteor'].includes(kind)) return;
+  if (chosenDomain === 'todo' && kind !== 'playfulcloud') return;
   const now = performance.now(), wait = (lastSummon[kind] || 0) + (SUMMON_COOLDOWN[kind] || 3) * 1000 - now;
   if (wait > 0) { say(kind.toUpperCase() + ' cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
   if (G.ce < COST[kind]) { say('Not enough cursed energy'); return; }
   lastSummon[kind] = now; G.ce -= COST[kind];
-  const p = playerPos().clone(), dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0; if (dir.lengthSq() < .01) dir.set(0,0,-1); dir.normalize();
-  const target = nearest(p, 36), center = target ? target.g.position.clone() : p.clone().addScaledVector(dir, 8);
+  const p = playerPos().clone(), dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0;
+  if (dir.lengthSq() < .01) dir.set(0,0,-1); dir.normalize();
+  const aimed = curses.filter(c => c.hp > 0).map(c => ({ c, rel: c.g.position.clone().sub(p) }))
+    .filter(o => o.rel.dot(dir) > 0.5 && o.rel.clone().setY(0).length() < 34)
+    .sort((x,y) => x.rel.length() - y.rel.length());
+  const target = aimed[0]?.c || nearest(p, 18);
+  const center = target ? target.g.position.clone() : p.clone().addScaledVector(dir, 8);
   const hitRadius = (point, radius, dmg, color, stun=0) => {
-    fxBall(point, color, radius, .35);
+    fxBall(point, color, radius, .38); fxRing(point, color, radius * 1.35, .38);
     for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(point) <= radius) { hurt(c, dmg * boost()); if (stun) c.stun = Math.max(c.stun || 0, stun); }
   };
-  if (chosenDomain === 'void') {
+  if (chosenDomain === 'todo' && kind === 'playfulcloud') {
+    // Todo's close-range martial-arts combo: quick impact bursts and a heavy finishing blow.
+    const origin = p.clone().addScaledVector(dir, 1.6); origin.y = Math.max(1.1, p.y);
+    fxSlash(origin, dir, 0xffd24a, 1.7, .18); fxSlash(origin.clone().addScaledVector(dir, .5), dir, 0xffffff, 1.25, .22);
+    let hits = 0;
+    for (const c of curses) {
+      if (c.hp <= 0) continue;
+      const rel = c.g.position.clone().sub(p), along = rel.dot(dir), closest = p.clone().addScaledVector(dir, Math.max(0, Math.min(3.6, along)));
+      if (along > 0 && along < 3.8 && c.g.position.distanceTo(closest) < 1.6) {
+        hurt(c, 52); c.stun = Math.max(c.stun || 0, .45); c.g.position.addScaledVector(dir, 1.1);
+        fxBall(c.g.position.clone(), 0xffd24a, .7, .22); fxRing(c.g.position.clone(), 0xffffff, 1.1, .18); hits++;
+      }
+    }
+    say('TODO: BRUISER COMBO' + (hits ? ' · ' + hits + ' HIT' : ' · GET CLOSER'));
+    A.noise(.2,.3,2400,120,'highpass'); A.tone(145,'square',.16,.22,55); return;
+  }
+  if (chosenDomain === 'coffin') {
+    if (kind === 'embers') {
+      // Ember Insects: a swarm of small, homing-looking firebolts with rapid impact pops.
+      const swarmTarget = target ? center.clone() : p.clone().addScaledVector(dir, 9);
+      for (let i = 0; i < 7; i++) {
+        const start = p.clone().addScaledVector(dir, 1.1).add(new THREE.Vector3(rand(-.55,.55), rand(-.25,.8), rand(-.55,.55)));
+        const end = swarmTarget.clone().add(new THREE.Vector3(rand(-1.1,1.1), rand(-.2,1.1), rand(-1.1,1.1)));
+        fxLine(start, end, i % 2 ? 0xffa52b : 0xff4b16, .16, .035);
+        fxBall(end, 0xff9a24, .34, .2);
+      }
+      let hits = 0;
+      for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(swarmTarget) < 4.2) { hurt(c, 26 * boost()); c.stun = Math.max(c.stun || 0, .18); hits++; }
+      fxRing(swarmTarget, 0xff7a1a, 2.8, .28);
+      say('JOGO: EMBER INSECTS' + (hits ? ' · ' + hits + ' HIT' : '')); A.noise(.16,.22,3200,350,'highpass'); A.tone(190,'sawtooth',.18,.18,65);
+    } else if (kind === 'flameburst') {
+      // A forward cone-like blast, erupting from Jogo's hand and knocking targets away.
+      const origin = p.clone().addScaledVector(dir, 2.2); origin.y = Math.max(1.15, p.y + .15);
+      const end = origin.clone().addScaledVector(dir, 7.5);
+      fxBall(origin, 0xff4a10, 1.1, .3); fxLine(origin, end, 0xff6b18, .7, .3); fxBall(end, 0xffa32b, 2.5, .4);
+      fxRing(end, 0xff4a10, 4.5, .35);
+      let hits = 0;
+      for (const c of curses) {
+        if (c.hp <= 0) continue;
+        const rel = c.g.position.clone().sub(origin), along = rel.dot(dir), closest = origin.clone().addScaledVector(dir, Math.max(0, Math.min(8, along)));
+        if (along > 0 && along < 8 && c.g.position.distanceTo(closest) < 2.8) {
+          hurt(c, 48 * boost()); c.stun = Math.max(c.stun || 0, .5);
+          const away = c.g.position.clone().sub(p).setY(0); if (away.lengthSq() > .01) c.g.position.addScaledVector(away.normalize(), 2.1); hits++;
+        }
+      }
+      say('JOGO: FLAME BURST' + (hits ? ' · ' + hits + ' HIT' : '')); A.noise(.4,.3,1700,120,'lowpass'); A.tone(105,'sawtooth',.32,.35,32);
+    } else if (kind === 'meteor') {
+      // Maximum: Meteor — a dramatic descending fireball with a broad impact zone.
+      const impact = center.clone(); impact.y = .5;
+      const sky = impact.clone().add(new THREE.Vector3(0, 19, 0));
+      fxLine(sky, impact, 0xff9b2e, 1.2, .28); fxBall(sky, 0xff5a12, 2.8, .55); fxBall(impact, 0xff6a12, 5.5, .65);
+      fxRing(impact, 0xff3b0a, 9, .65); fxRing(impact, 0xffc04a, 6, .48);
+      let hits = 0;
+      for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(impact) < 9) { hurt(c, 105 * boost()); c.stun = Math.max(c.stun || 0, 1.1); hits++; }
+      say('JOGO: MAXIMUM — METEOR' + (hits ? ' · ' + hits + ' HIT' : '')); A.noise(.75,.55,900,70,'lowpass'); A.tone(48,'sine',.85,.65,24);
+    }
+  } else if (chosenDomain === 'void') {
     if (kind === 'blue') {
-      fxBall(center, 0x287dff, 2.5, .5);
-      for (const c of curses) { const delta = p.clone().sub(c.g.position), d = delta.length(); if (d < 15 && d > .1) { c.g.position.addScaledVector(delta.normalize(), Math.min(2.8, 18/(d+1))); if (d < 9) hurt(c, 20 * boost()); } }
-      say('LIMITLESS: BLUE — attraction'); A.tone(180, 'sine', .35, .3, 45);
+      // Lapse: Blue creates a visible singularity ahead, drags curses inward, then pulses.
+      const singularity = p.clone().addScaledVector(dir, target ? Math.min(9, p.distanceTo(center)) : 8); singularity.y = Math.max(1.15, p.y);
+      fxBall(singularity, 0x167bff, 1.15, .72); fxRing(singularity, 0x52c8ff, 2.7, .62); fxRing(singularity, 0x167bff, 4.1, .8);
+      for (const c of curses) {
+        if (c.hp <= 0) continue;
+        const delta = singularity.clone().sub(c.g.position), d = delta.length();
+        if (d < 15 && d > .15) { c.g.position.addScaledVector(delta.normalize(), Math.min(4.2, (23 / (d + .7)))); c.stun = Math.max(c.stun || 0, .25); }
+        if (d < 3.1) hurt(c, 28 * boost());
+      }
+      fxBall(singularity, 0x9be7ff, .6, .22);
+      say('LIMITLESS: BLUE — CURSED TECHNIQUE LAPSE'); A.tone(125, 'sine', .55, .42, 42); A.noise(.18,.16,900,80,'lowpass');
     } else if (kind === 'red') {
-      hitRadius(center, 6, 34, 0xff4b55, .65);
-      for (const c of curses) { const d = c.g.position.distanceTo(center); if (d < 7) c.g.position.add(c.g.position.clone().sub(center).normalize().multiplyScalar((7-d)*.7)); }
-      say('LIMITLESS: RED — repulsion'); A.noise(.25, .4, 900, 120, 'lowpass');
+      // Reversal: a bright red core and expanding shock ring push enemies away from Gojo.
+      const origin = p.clone().addScaledVector(dir, 2.4); origin.y = Math.max(1.1, p.y);
+      fxBall(origin, 0xff1838, 1.8, .42); fxRing(origin, 0xff334f, 5.5, .55); fxRing(origin, 0xffa0b0, 3.5, .4);
+      let hit = 0;
+      for (const c of curses) {
+        if (c.hp <= 0) continue;
+        const away = c.g.position.clone().sub(origin), d = away.length();
+        if (d < 10) {
+          if (d < .1) away.copy(dir).negate(); else away.normalize();
+          c.g.position.addScaledVector(away, (10 - d) * 1.05 + 1.2); c.stun = Math.max(c.stun || 0, .45);
+          if (d < 9) { hurt(c, 42 * boost()); hit++; }
+          fxSlash(c.g.position.clone(), away, 0xff4c68, .8, .18);
+        }
+      }
+      say('LIMITLESS: RED — CURSED TECHNIQUE REVERSAL' + (hit ? ' · ' + hit + ' HIT' : '')); A.noise(.35,.42,1500,100,'lowpass'); A.tone(85,'sawtooth',.32,.25,30);
     } else {
       const end = center.clone().addScaledVector(dir, 16); fxLine(p.clone().setY(1.5), end.clone().setY(1.5), 0x9c65ff, .7, .28); fxBall(end, 0x7e38ff, 3.2, .6);
       for (const c of curses) { const rel = c.g.position.clone().sub(p), along = Math.max(0, Math.min(16, rel.dot(dir))), near = p.clone().addScaledVector(dir, along); if (rel.length() < 18 && c.g.position.distanceTo(near) < 2.2) hurt(c, 85 * boost()); }
@@ -484,21 +614,128 @@ function useTechnique(kind) {
     }
   } else if (chosenDomain === 'shrine') {
     if (kind === 'dismantle') {
-      fxLine(p.clone().setY(1.4), center.clone(), 0xff3545, .25, .09); if (target) hurt(target, 30 * boost());
-      for (const c of curses) if (c.g.position.distanceTo(center) < 2.2) hurt(c, 12 * boost());
-      say('SUKUNA: DISMANTLE'); A.tone(650, 'sawtooth', .18, .3, 120);
+      // Dismantle: fast, thin ranged slashes travelling along the player's aim line.
+      const end = p.clone().addScaledVector(dir, 28); end.y = Math.max(1.1, p.y);
+      fxSlash(p.clone().addScaledVector(dir, 1.4).setY(Math.max(1.25,p.y)), dir, 0xff2e48, 2.4, .24);
+      fxLine(p.clone().addScaledVector(dir, 1.2).setY(Math.max(1.25,p.y)), end, 0xff3852, .18, .018);
+      let hits = 0;
+      for (const c of curses) {
+        if (c.hp <= 0) continue;
+        const rel = c.g.position.clone().sub(p), along = rel.dot(dir);
+        const nearestPoint = p.clone().addScaledVector(dir, Math.max(1.2, Math.min(28, along)));
+        if (along > .7 && along < 28 && c.g.position.distanceTo(nearestPoint) < (c.big ? 1.7 : 1.15)) {
+          fxSlash(c.g.position.clone(), dir, 0xff2948, c.big ? 1.8 : 1.1, .2); hurt(c, 34 * boost()); hits++;
+        }
+      }
+      say('SUKUNA: DISMANTLE' + (hits ? ' · ' + hits + ' CUT' : '')); A.tone(720,'sawtooth',.12,.18,180); A.noise(.1,.2,2600,500,'highpass');
     } else if (kind === 'cleave') {
-      hitRadius(center, 3.5, 48, 0xff162a, .25); say('SUKUNA: CLEAVE'); A.noise(.2, .35, 1800, 100, 'highpass');
+      // Cleave is contact-range and brutal: close targets receive layered cuts, not a distant blast.
+      let hits = 0;
+      const facing = dir.clone();
+      for (const c of curses) {
+        if (c.hp <= 0) continue;
+        const rel = c.g.position.clone().sub(p), d = rel.length(), forward = rel.clone().setY(0).normalize().dot(facing);
+        if (d < 3.6 && forward > -.15) {
+          const n = c.big ? 5 : 3;
+          for (let i = 0; i < n; i++) {
+            const slDir = new THREE.Vector3(rand(-1,1),rand(-.6,.8),rand(-1,1)).normalize();
+            fxSlash(c.g.position.clone().add(new THREE.Vector3(0,rand(-.25,.5),0)), slDir, i % 2 ? 0xff1b37 : 0xffffff, c.big ? 2.2 : 1.5, .22);
+          }
+          hurt(c, (c.big ? 105 : 72) * boost()); c.stun = Math.max(c.stun || 0, .55); hits++;
+        }
+      }
+      fxRing(p.clone().addScaledVector(dir, 1.2).setY(Math.max(1.1,p.y)), 0xff243d, 2.8, .25);
+      say('SUKUNA: CLEAVE' + (hits ? ' · ' + hits + ' DISSECTED' : ' · GET CLOSER')); A.noise(.24,.38,2400,90,'highpass'); A.tone(95,'sawtooth',.16,.2,35);
     } else {
       const end = center.clone().addScaledVector(dir, 12); fxLine(p.clone().setY(1.5), end.clone().setY(1.5), 0xff7a22, .55, .2); hitRadius(end, 5, 65, 0xff5b1f, .8); say('SUKUNA: FIRE ARROW'); A.tone(100, 'sawtooth', .45, .5, 35);
     }
   }
 }
+let lastBoogie = 0;
+function boogieWoogie() {
+  if (chosenDomain !== 'todo' || !gameStarted) return;
+  const now = performance.now(), wait = lastBoogie + 5200 - now;
+  if (wait > 0) { say('BOOGIE WOOGIE cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
+  if (G.ce < 20) { say('Not enough cursed energy for Boogie Woogie'); return; }
+  lastBoogie = now; G.ce -= 20;
+  const p = playerPos().clone(), targets = curses.filter(c => c.hp > 0).sort((u,v) => u.g.position.distanceTo(p)-v.g.position.distanceTo(p));
+  const first = targets[0], second = targets[1];
+  if (first) {
+    const p1 = first.g.position.clone();
+    if (second) {
+      const p2 = second.g.position.clone(); first.g.position.copy(p2); second.g.position.copy(p1);
+      first.stun = Math.max(first.stun || 0, .65); second.stun = Math.max(second.stun || 0, .65);
+      fxBall(p1, 0xffd24a, 1.4, .32); fxRing(p1, 0xffffff, 2.1, .28); fxBall(p2, 0xffd24a, 1.4, .32); fxRing(p2, 0xffffff, 2.1, .28);
+      say('BOOGIE WOOGIE! TWO CURSES SWAPPED');
+    } else {
+      const away = p1.clone().sub(p); away.y = 0; if (away.lengthSq() < .01) away.set(0,0,1); away.normalize();
+      const p2 = p.clone().addScaledVector(away, -7); p2.y = p1.y;
+      first.g.position.copy(p2); first.stun = Math.max(first.stun || 0, .8);
+      fxBall(p1, 0xffd24a, 1.5, .32); fxRing(p1, 0xffffff, 2.2, .28); fxBall(p2, 0xffd24a, 1.5, .32); fxRing(p2, 0xffffff, 2.2, .28);
+      say('BOOGIE WOOGIE! TARGET REPOSITIONED');
+    }
+  } else { say('BOOGIE WOOGIE — no curse in range'); }
+  A.tone(520,'triangle',.09,.22,260); A.tone(780,'triangle',.1,.2,390); A.noise(.12,.18,3000,180,'highpass');
+}
+function hakariMove(kind) {
+  if (chosenDomain !== 'hakari' || !gameStarted) return;
+  const now = performance.now(), p = playerPos().clone(), dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y=0; if(dir.lengthSq()<.01)dir.set(0,0,-1); dir.normalize();
+  if (kind === 'jackpot') {
+    if (now < hakariFeverUntil) { say('FEVER TIME: ' + ((hakariFeverUntil-now)/1000).toFixed(0) + 's'); return; }
+    const roll=Math.random();
+    const col=0xff4fd8;
+    // pachinko-style three-reel graphic in front of the player
+    const board=new THREE.Group();
+    const panel=new THREE.Mesh(new THREE.BoxGeometry(2.4,1.6,.16),new THREE.MeshStandardMaterial({color:0x191126,emissive:col,emissiveIntensity:.8,metalness:.5,roughness:.3})); board.add(panel);
+    for(let i=0;i<3;i++){const reel=new THREE.Mesh(new THREE.BoxGeometry(.52,.72,.08),new THREE.MeshBasicMaterial({color:0xffffff}));reel.position.set((i-1)*.65,0,.12);board.add(reel);const tx=document.createElement('canvas');tx.width=128;tx.height=128;const cx=tx.getContext('2d');cx.fillStyle='#21132b';cx.fillRect(0,0,128,128);cx.fillStyle=roll<.1?'#ffdf54':'#ff4fd8';cx.font='bold 78px sans-serif';cx.textAlign='center';cx.fillText(roll<.1?'7':(['7','BAR','★'][Math.floor(Math.random()*3)]),64,88);reel.material.map=new THREE.CanvasTexture(tx);reel.material.needsUpdate=true;}
+    board.position.copy(p).addScaledVector(dir,2.3);board.position.y=Math.max(1.35,p.y);board.lookAt(camera.position);world.add(board);setTimeout(()=>world.remove(board),5000);
+    fxRing(board.position.clone(),col,3,.7); A.tone(roll<.1?880:330,'square',.5,.35,roll<.1?1400:120);
+    if(roll<.1){hakariFeverUntil=now+30000;say('JACKPOT!!! FEVER TIME — 30 SECONDS');}
+    else {say(roll<.35?'NEAR JACKPOT!':'NO JACKPOT — TRY AGAIN'); if(roll<.35)G.ce=Math.min(CE_MAX,G.ce+12);}
+    return;
+  }
+  const wait=(hakariLastMove[kind]||0)+(HAKARI_CD[kind]||4)*1000-now;if(wait>0){say(kind.toUpperCase()+' cooldown '+(wait/1000).toFixed(1)+'s');return;}
+  const cost=HAKARI_COST[kind]||0;if(G.ce<cost){say('Not enough cursed energy');return;}hakariLastMove[kind]=now;G.ce-=cost;
+  if(kind==='doors'){
+    const center=p.clone().addScaledVector(dir,3);center.y=Math.max(1.2,p.y);
+    const doorMat=new THREE.MeshStandardMaterial({color:0x3a293f,emissive:0xff4fd8,emissiveIntensity:.65,metalness:.4});
+    for(const side of [-1,1]){const door=new THREE.Mesh(new THREE.BoxGeometry(.9,2.3,.16),doorMat);door.position.copy(center).add(new THREE.Vector3(-dir.z*side*.48,0,dir.x*side*.48));door.rotation.y=Math.atan2(dir.x,dir.z);world.add(door);setTimeout(()=>world.remove(door),700);}
+    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(center);if(rel.length()<2.2){hurt(c,42);c.stun=Math.max(c.stun||0,.8);hits++;}}
+    fxRing(center,0xff4fd8,2.4,.35);say('HAKARI: SLIDING DOORS'+(hits?' · '+hits+' HIT':''));
+  } else if(kind==='rush'){
+    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(4,along)));if(along>0&&along<4.2&&c.g.position.distanceTo(closest)<1.6){hurt(c,22);c.stun=Math.max(c.stun||0,.25);hits++;}}
+    fxSlash(p.clone().addScaledVector(dir,2),dir,0xff4fd8,2.2,.3);say('HAKARI: RUSH COMBO'+(hits?' · '+hits+' HIT':''));
+  } else if(kind==='shoulder'){
+    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(5,along)));if(along>0&&along<5.2&&c.g.position.distanceTo(closest)<1.7){hurt(c,36);c.stun=Math.max(c.stun||0,.7);c.g.position.addScaledVector(dir,1.8);hits++;}}
+    fxRing(p.clone().addScaledVector(dir,3),0xff4fd8,2,.3);say('HAKARI: SHOULDER CHARGE'+(hits?' · '+hits+' HIT':''));
+  }
+}
+
 const trigger = s => {
+  if (chosenDomain === 'hakari') { if (s === 'hakari') return hakariMove('jackpot'); if (s === 'playfulcloud') return hakariMove('doors'); if (s === 'blue') return hakariMove('rush'); if (s === 'red') return hakariMove('shoulder'); return; }
   if (ENVS[s]) return requestDomain(s);
-  if (chosenDomain === 'void') return useTechnique(({dogs:'blue',nue:'red',toad:'purple',mahoraga:'purple',blue:'blue',red:'red',purple:'purple'})[s] || 'blue');
-  if (chosenDomain === 'shrine') return useTechnique(({dogs:'dismantle',nue:'cleave',toad:'firearrow',mahoraga:'firearrow',dismantle:'dismantle',cleave:'cleave',firearrow:'firearrow'})[s] || 'dismantle');
-  return summon(s);
+  if (chosenDomain === 'todo') {
+    if (s === 'playfulcloud') return useTechnique('playfulcloud');
+    if (s === 'boogie') return boogieWoogie();
+    say('TODO: point = close-range combo; physically clap both open palms for BOOGIE WOOGIE'); return;
+  }
+  if (chosenDomain === 'void') {
+    const technique = ({dogs:'blue',nue:'red',toad:'purple',mahoraga:'purple',blue:'blue',red:'red',purple:'purple'})[s];
+    if (technique) return useTechnique(technique);
+    say('Limitless techniques: point = Blue, peace = Red, three fingers = Hollow Purple'); return;
+  }
+  if (chosenDomain === 'shrine') {
+    const technique = ({dogs:'dismantle',nue:'cleave',toad:'firearrow',mahoraga:'firearrow',dismantle:'dismantle',cleave:'cleave',firearrow:'firearrow'})[s];
+    if (technique) return useTechnique(technique);
+    say('Sukuna techniques: point = Dismantle, peace = Cleave, three fingers = Fire Arrow'); return;
+  }
+  if (chosenDomain === 'coffin') {
+    const technique = ({dogs:'embers',nue:'flameburst',toad:'meteor',mahoraga:'meteor',embers:'embers',flameburst:'flameburst',meteor:'meteor'})[s];
+    if (technique) return useTechnique(technique);
+    say('Jogo: point = Ember Insects, peace = Flame Burst, three fingers = Maximum: Meteor'); return;
+  }
+  if (chosenDomain === 'shadow' && ['dogs','nue','toad','mahoraga'].includes(s)) return summon(s);
+  if (chosenDomain === 'shadow') say('Ten Shadows: summon Divine Dogs, Nue, Toad, or Mahoraga');
 };
 
 /* ---------- Hands ---------- */
@@ -551,7 +788,7 @@ function analyze(hi) {
 const state = [0, 1, 2, 3].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
 const activatedAt = Object.create(null);
 let lastDomainActivation = -Infinity;
-let domainReadyAt = 0, rctReadyAt = 0;
+let domainReadyAt = 0;
 function update(slot, sign, time) {
   const st = state[slot];
   if (sign) {
@@ -593,8 +830,8 @@ function requestDomain(name, force) {
   if (pending || name === envName) return;
   if (name !== 'normal' && !force) {
     const left = domainReadyAt - performance.now(); if (left > 0) { say('Domain cooldown: ' + (left / 1000).toFixed(1) + 's'); return; }
-    const cost = DOMAIN_COST[name] ?? 40; if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; }
-    G.ce -= cost; domainReadyAt = performance.now() + DOMAIN_COOLDOWN * 1000; say(INFO[name].en + ' — ' + cost + ' CE');
+    const cost = Math.ceil((DOMAIN_COST[name] ?? 40) * (activeVows.includes('efficient') ? .8 : 1)); if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; }
+    G.ce -= cost; domainReadyAt = performance.now() + DOMAIN_COOLDOWN * 1000 * (activeVows.includes('quick') ? .85 : 1); say(INFO[name].en + ' — ' + cost + ' CE');
   }
   pending = { name, phase: 0, t: 0 };
   flashMat.color.set(INFO[name].flash); flash.visible = true; A.riser();
@@ -602,17 +839,12 @@ function requestDomain(name, force) {
 
 /* ---------- Game step: AI for curses + shikigami, punches, healing, waves ---------- */
 const prevW = [null, null], punchCd = [0, 0];
-let rctWasActive = false;
 function gameStep(dt, info, wd) {
   const t = TIME.value, pp = playerPos().clone(), [a, b] = info;
   // Cursed energy: steady recovery outside domains; domains are powerful but costly to maintain.
-  if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
+  if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + (chosenDomain === 'hakari' && performance.now() < hakariFeverUntil ? 100 : CE_REGEN) * dt);
+  if (chosenDomain === 'hakari' && performance.now() < hakariFeverUntil) { G.hp = Math.min(vowHpMax(), G.hp + 12*dt); }
   else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
-  // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
-  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && !(a.n === 0 && b.n === 0 && wd < SHADOW_D) && wd < .62 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
-  if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
-  if (rctWasActive && !G.rct) rctReadyAt = performance.now() + RCT_COOLDOWN * 1000;
-  rctWasActive = G.rct;
   // punches
   G.comboT -= dt;
   for (let hi = 0; hi < 2; hi++) {
@@ -683,10 +915,14 @@ function gameStep(dt, info, wd) {
     fxBall(c.g.position, CC[c.type], 1.2, .4); world.remove(c.g); curses.splice(i, 1);
     G.score += c.big ? 30 : 10; G.ce = Math.min(CE_MAX, G.ce + 3); A.tone(400, 'sine', .2, .1, 100);
     if (G.score > G.best) { G.best = G.score; try { localStorage.setItem('jjkBest', G.best); } catch (e) {} }
-    if (!curses.length) { G.hp = Math.min(100, G.hp + 15); say('Wave cleared', 2); }
+    if (!curses.length) say('Wave cleared — recover before the next wave', 2);
   }
-  // waves
-  if (!curses.length) { G.nextWave -= dt; if (G.nextWave <= 0) { G.wave++; for (let i = 0; i < 3 + G.wave * 2; i++) spawnCurse(); say('Wave ' + G.wave, 2.5); G.nextWave = 3; } }
+  // Between waves, slowly regenerate HP automatically. No manual healing sign or CE cost.
+  if (!curses.length) {
+    G.hp = Math.min(vowHpMax(), G.hp + WAVE_HP_REGEN * dt);
+    G.nextWave -= dt;
+    if (G.nextWave <= 0) { G.wave++; for (let i = 0; i < 3 + G.wave * 2; i++) spawnCurse(); say('Wave ' + G.wave, 2.5); G.nextWave = 3; }
+  }
   // Defeat ends the run but keeps the headset session active; the picker returns in VR.
   if (G.hp <= 0 && gameStarted) {
     const finalScore = G.score;
@@ -694,7 +930,8 @@ function gameStep(dt, info, wd) {
     G.hp = 0; G.ce = 0; gameStarted = false; pending = null; flash.visible = false; flashMat.opacity = 0;
     if (envName !== 'normal') swapTo('normal');
     Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
-    showDomainMenu('EXORCISED! SCORE ' + finalScore + ' — CHOOSE AGAIN');
+    awaitingVowPick = true;
+    showDomainMenu('RUN OVER — SCORE ' + finalScore + '\nBINDING VOW: POINT = GLASS CANNON · PEACE = EFFICIENT CE · THREE FINGERS = REINFORCEMENT');
   }
   if (G.msgT > 0) G.msgT -= dt;
 }
@@ -708,28 +945,30 @@ let hudT = 0;
 function drawHud(dbg) {
   hx.clearRect(0, 0, 768, 300); hx.fillStyle = 'rgba(5,7,16,.78)'; hx.fillRect(0, 0, 768, 300); hx.strokeStyle = 'rgba(150,180,255,.65)'; hx.lineWidth = 2; hx.strokeRect(2,2,764,296);
   const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(100, y, 620, 22); hx.fillStyle = col; hx.fillRect(100, y, 620 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
-  bar(16, G.hp / 100, '#e0413a', 'HP'); bar(48, G.ce / CE_MAX, '#4aa8ff', 'CE');
+  bar(16, G.hp / vowHpMax(), '#e0413a', 'HP'); bar(48, G.ce / CE_MAX, '#4aa8ff', 'CE');
   hx.font = '23px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`WAVE ${G.wave}   SCORE ${G.score}   BEST ${G.best}`, 10, 105);
-  hx.font = '19px sans-serif'; hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'RCT ACTIVE — healing / CE draining' : (envName === 'normal' ? 'Domain ready: ' + (chosenDomain ? INFO[chosenDomain].en : 'choose one') + ' | CE regen 2.8/s' : 'DOMAIN: ' + INFO[envName].en + ' | CE drain ' + DOMAIN_DRAIN.toFixed(1) + '/s'), 10, 139);
+  hx.font = '15px sans-serif'; hx.fillStyle = '#ff9df0'; hx.fillText('VOWS: ' + (activeVows.length ? activeVows.map(id => VOWS.find(v=>v.id===id)?.name).join(' · ') : 'none') + ' ('+activeVows.length+'/3)', 10, 122);
+  hx.font = '19px sans-serif'; hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : (!curses.length && gameStarted ? 'BETWEEN WAVES — HP regenerates ' + WAVE_HP_REGEN.toFixed(1) + '/s' : envName === 'normal' ? 'Domain ready: ' + (chosenDomain ? INFO[chosenDomain].en : 'choose one') + ' | CE regen 2.8/s' : 'DOMAIN: ' + INFO[envName].en + ' | CE drain ' + DOMAIN_DRAIN.toFixed(1) + '/s'), 10, 139);
   const sec = ms => Math.max(0, ms - performance.now()) / 1000;
   hx.font = '16px sans-serif'; hx.fillStyle = '#cdd8ff';
   hx.fillText('CD  Dogs ' + sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1) + 's   Nue ' + sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1) + 's   Toad ' + sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1) + 's', 10, 174);
-  hx.fillText('Mahoraga ' + sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1) + 's   Domain ' + sec(domainReadyAt).toFixed(1) + 's   RCT ' + sec(rctReadyAt).toFixed(1) + 's', 10, 201);
-  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   Point / Peace / 3 fingers = techniques for Void or Shrine', 10, 228);
+  hx.fillText('Mahoraga ' + sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1) + 's   Domain ' + sec(domainReadyAt).toFixed(1) + 's   HP regen: 2.5/s between waves', 10, 201);
+  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   ' + (chosenDomain === 'void' ? 'Limitless: Point=Blue / Peace=Red / 3=Purple' : chosenDomain === 'shrine' ? 'Sukuna: Point=Dismantle / Peace=Cleave / 3=Fire Arrow' : chosenDomain === 'shadow' ? 'Ten Shadows: Point=Dogs / Peace=Nue / 3=Toad' : chosenDomain === 'todo' ? 'Todo: Point=Combo / Clap=Boogie Woogie' : 'Jogo: Point=Ember Insects / Peace=Flame Burst / 3=Meteor'), 10, 228);
   if (DEBUG) { hx.font = '15px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 267); }
   hTex.needsUpdate = true;
 }
 const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 
 /* Desktop test keys */
-const KEYS = { 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', 5: 'blue', 6: 'red', 7: 'purple', 8: 'dismantle', 9: 'cleave', 0: 'firearrow', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
+const KEYS = { y: 'hakari', b: 'boogie', t: 'todo', 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', 5: 'blue', 6: 'red', 7: 'purple', 8: 'dismantle', 9: 'cleave', 0: 'firearrow', '-': 'embers', '=': 'flameburst', '[': 'meteor', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
 addEventListener('keydown', e => {
-  const k = KEYS[e.key.toLowerCase()]; if (k && gameStarted && !awaitingDomainPick) trigger(k);
+  const k = KEYS[e.key.toLowerCase()]; if (k === 'todo' && awaitingDomainPick && renderer.xr.isPresenting) chooseDomainInVR('todo'); else if (k === 'hakari' && awaitingDomainPick && renderer.xr.isPresenting) chooseDomainInVR('hakari'); else if (k && gameStarted && !awaitingDomainPick) trigger(k);
   if (e.code === 'Space' && gameStarted) { const c = nearest(new THREE.Vector3(0, 1.5, 0)); if (c) strike(c, 5); }
 });
 
 /* ---------- Main loop ---------- */
 const clock = new THREE.Clock();
+let previousHandDistance = null, lastClapTime = -10;
 renderer.setAnimationLoop(time => {
   const dt = Math.min(clock.getDelta(), .05); TIME.value = time / 1000;
   const info = hands.map((h, hi) => h.visible ? analyze(hi) : null), a = info[0], b = info[1];
@@ -738,30 +977,48 @@ renderer.setAnimationLoop(time => {
   if (a && b) { const w0 = jp(hands[0], 'wrist'), w1 = jp(hands[1], 'wrist'); if (w0 && w1) wd = w0.distanceTo(w1); }
   const isIM = x => !!x && x.pose === 'peace';
   let pickSign = null;
-  if (awaitingDomainPick && renderer.xr.isPresenting) {
-    // A domain's own symbol selects it; no pointer/menu selection is used.
-    if (info.some(x => x && x.raised && x.pose === 'thumbsup') && !(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .62)) pickSign = 'void';
+  if (awaitingVowPick && renderer.xr.isPresenting) {
+    if (a && a.raised && a.pose === 'point') pickSign = 'vow0';
+    else if (a && a.raised && a.pose === 'peace') pickSign = 'vow1';
+    else if (a && a.raised && a.pose === 'three') pickSign = 'vow2';
+    if (pickSign) { applyVowPick(Number(pickSign.slice(3))); pickSign = null; }
+  } else if (awaitingDomainPick && renderer.xr.isPresenting) {
+    // Domain signs select domains; Todo is selected by a single physical clap (handled below).
+    if (info.some(x => x && x.raised && x.pose === 'thumbsup')) pickSign = 'void';
     else if (a && b && a.raised && b.raised && isIM(a) && isIM(b) && wd < SHRINE_D) pickSign = 'shrine';
+    else if (a && b && a.raised && b.raised && a.pose === 'point' && b.pose === 'point' && wd > 0.35) pickSign = 'hakari';
     else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < 0.58) pickSign = 'coffin'; else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
   }
-  const wasPickingDomain = awaitingDomainPick;
+  // One clap selects Todo at the picker; another clap during play activates Boogie Woogie.
+  // Require palms to start apart, then come together, so simply holding them together won't trigger.
+  const clapNow = !!((awaitingDomainPick || (gameStarted && chosenDomain === 'todo')) && a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < .23 && previousHandDistance !== null && previousHandDistance > .40 && time - lastClapTime > 550);
+  let todoSelectedByClap = false;
+  if (clapNow) {
+    lastClapTime = time;
+    if (awaitingDomainPick && renderer.xr.isPresenting) { chooseDomainInVR('todo'); todoSelectedByClap = true; }
+    else if (gameStarted && chosenDomain === 'todo') boogieWoogie();
+  }
+  if (Number.isFinite(wd) && wd < 90) previousHandDistance = wd;
+  const wasPickingDomain = awaitingDomainPick || todoSelectedByClap;
   update(3, pickSign, time);
   if (gameStarted && bothUp) {
-    if (chosenDomain === 'shadow' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
+    if (chosenDomain === 'hakari' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'hakari';
+    else if (chosenDomain === 'shadow' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
     else if (chosenDomain === 'shrine' && isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
     else if (a.pose === 'three' && b.pose === 'three' && wd < .42) two = 'mahoraga';
     else if (chosenDomain === 'coffin' && a.pose === 'open' && b.pose === 'open' && wd < 0.58) two = 'coffin';
   }
   update(2, two, time);
+
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
     if (gameStarted && !wasPickingDomain && !two && inf && inf.raised) {
       const voidGestureActive = info.some(x => x && x.raised && (x.pose === 'cross' || (x.pose === 'peace' && isCrossed(hands[info.indexOf(x)]))));
       if (chosenDomain === 'void' && inf.pose === 'thumbsup' && !(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .62)) s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
-      else if (inf.pose === 'point') s = chosenDomain === 'shrine' ? 'dismantle' : chosenDomain === 'void' ? 'blue' : 'dogs';
-      else if (inf.pose === 'peace' && !voidGestureActive) s = chosenDomain === 'shrine' ? 'cleave' : chosenDomain === 'void' ? 'red' : 'nue';
-      else if (inf.pose === 'three') s = chosenDomain === 'shrine' ? 'firearrow' : chosenDomain === 'void' ? 'purple' : 'toad';
+      else if (inf.pose === 'point') s = chosenDomain === 'hakari' ? 'playfulcloud' : chosenDomain === 'todo' ? 'playfulcloud' : chosenDomain === 'shrine' ? 'dismantle' : chosenDomain === 'void' ? 'blue' : chosenDomain === 'shadow' ? 'dogs' : chosenDomain === 'coffin' ? 'embers' : null;
+      else if (inf.pose === 'peace' && !voidGestureActive) s = chosenDomain === 'hakari' ? 'blue' : chosenDomain === 'shrine' ? 'cleave' : chosenDomain === 'void' ? 'red' : chosenDomain === 'shadow' ? 'nue' : chosenDomain === 'coffin' ? 'flameburst' : null;
+      else if (inf.pose === 'three') s = chosenDomain === 'hakari' ? 'red' : chosenDomain === 'shrine' ? 'firearrow' : chosenDomain === 'void' ? 'purple' : chosenDomain === 'shadow' ? 'toad' : chosenDomain === 'coffin' ? 'meteor' : null;
     }
     update(hi, s, time);
   }
