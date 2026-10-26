@@ -48,12 +48,12 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 /* ============ TUNING ============ */
 const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
 const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.022;
-const SHRINE_D = 0.42, COFFIN_D = 0.34, COFFIN_T = 0.11, SHADOW_D = 0.28, GRACE = 180;
+const SHRINE_D = 0.52, COFFIN_D = 0.43, COFFIN_T = 0.16, SHADOW_D = 0.38, GRACE = 260;
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
-const HOLD = { void: 1450, shrine: 1450, coffin: 1350, shadow: 1400, normal: 850, dogs: 750, nue: 850, toad: 800, mahoraga: 1100 };
+const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850 };
 const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
 const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24 };
-const DOMAIN_COOLDOWN = 14, RCT_COOLDOWN = 7, PUNCH_COOLDOWN = 0.65;
+const DOMAIN_COOLDOWN = 14, RCT_COOLDOWN = 5, PUNCH_COOLDOWN = 0.65;
 const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40 };
 const CE_MAX = 100, CE_REGEN = 2.8, DOMAIN_DRAIN = 7.5, RCT_DRAIN = 18, RCT_HEAL = 7, DOMAIN_LOCKOUT = 14;
 let chosenDomain = null, gameStarted = false, awaitingDomainPick = true;
@@ -110,7 +110,7 @@ renderer.xr.addEventListener('sessionend', () => { gameStarted = false; awaiting
 // In-VR instruction only: select the domain by holding its hand sign.
 let vrMenuMessage = 'SELECT DOMAIN TO START';
 const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainInstruction';
-vrDomainGroup.position.set(0, 0, -1.65); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
+vrDomainGroup.position.set(0, 0, -1.9); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
 function makeInstructionTexture(message) {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 420;
   const x = c.getContext('2d');
@@ -128,7 +128,7 @@ function makeInstructionTexture(message) {
 }
 const vrInstruction = new THREE.Mesh(
   new THREE.PlaneGeometry(1.65, .68),
-  new THREE.MeshBasicMaterial({map:makeInstructionTexture('SELECT DOMAIN TO START\nHold the domain sign until it locks in'), transparent:true, depthTest:false, side:THREE.DoubleSide})
+  new THREE.MeshBasicMaterial({map:makeInstructionTexture('SELECT DOMAIN TO START\nHold the domain sign until it locks in'), transparent:true, depthTest:true, depthWrite:false, side:THREE.DoubleSide})
 );
 vrInstruction.position.set(0,0,0); vrDomainGroup.add(vrInstruction);
 function drawVrDomainMenu() {
@@ -372,8 +372,8 @@ const flash = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), flashMat);
 flash.position.z = -.4; flash.renderOrder = 1001; flash.frustumCulled = false; flash.visible = false; camera.add(flash);
 const tcv = document.createElement('canvas'); tcv.width = 1024; tcv.height = 300;
 const tctx = tcv.getContext('2d'), titleTex = new THREE.CanvasTexture(tcv); titleTex.colorSpace = THREE.SRGBColorSpace;
-const titleMat = new THREE.SpriteMaterial({ map: titleTex, transparent: true, depthTest: false, depthWrite: false, opacity: 0, fog: false });
-const titleSpr = new THREE.Sprite(titleMat); titleSpr.scale.set(2.4, .7, 1); titleSpr.position.set(0, .3, -2.2); titleSpr.renderOrder = 1000; titleSpr.visible = false; camera.add(titleSpr);
+const titleMat = new THREE.SpriteMaterial({ map: titleTex, transparent: true, depthTest: true, depthWrite: false, opacity: 0, fog: false });
+const titleSpr = new THREE.Sprite(titleMat); titleSpr.scale.set(2.4, .7, 1); titleSpr.position.set(0, .3, -2.4); titleSpr.renderOrder = 3; titleSpr.visible = false; camera.add(titleSpr);
 function drawTitle(name) {
   const I = INFO[name]; tctx.clearRect(0, 0, 1024, 300); tctx.textAlign = 'center'; tctx.lineJoin = 'round';
   const line = (t, y, s) => { tctx.font = 'bold ' + s + 'px sans-serif'; tctx.lineWidth = s / 6; tctx.strokeStyle = 'rgba(0,0,0,.85)'; tctx.shadowColor = I.col; tctx.shadowBlur = 26; tctx.strokeText(t, 512, y); tctx.fillStyle = '#fff'; tctx.fillText(t, 512, y); };
@@ -475,7 +475,7 @@ function isThumbsUp(h) {
   const tip = jp(h, 'thumb-tip'), prox = jp(h, 'thumb-phalanx-proximal'), wrist = jp(h, 'wrist'), indexBase = jp(h, 'index-finger-metacarpal');
   if (!tip || !prox || !wrist || !indexBase) return false;
   // Thumb tip must point clearly above its base while the four long fingers are curled.
-  return tip.y > prox.y + 0.035 && tip.distanceTo(indexBase) > 0.045 && tip.distanceTo(wrist) > 0.07;
+  return tip.y > prox.y + 0.015 && tip.distanceTo(indexBase) > 0.035 && tip.distanceTo(wrist) > 0.055;
 }
 const fingerMem = [{}, {}];
 function fingerStates(hi) {
@@ -567,7 +567,7 @@ function gameStep(dt, info, wd) {
   if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
   else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
   // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
-  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .48 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
+  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .8 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
   if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
   if (rctWasActive && !G.rct) rctReadyAt = performance.now() + RCT_COOLDOWN * 1000;
   rctWasActive = G.rct;
@@ -660,8 +660,8 @@ function gameStep(dt, info, wd) {
 /* ---------- HUD ---------- */
 const hcv = document.createElement('canvas'); hcv.width = 768; hcv.height = 300;
 const hx = hcv.getContext('2d'), hTex = new THREE.CanvasTexture(hcv); hTex.colorSpace = THREE.SRGBColorSpace;
-const hud = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthTest: false, fog: false }));
-hud.scale.set(.82, .32, 1); hud.position.set(0, -.31, -.9); hud.renderOrder = 999; camera.add(hud);
+const hud = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthTest: true, depthWrite: false, fog: false }));
+hud.scale.set(.82, .32, 1); hud.position.set(0, -.31, -1.15); hud.renderOrder = 2; camera.add(hud);
 let hudT = 0;
 function drawHud(dbg) {
   hx.clearRect(0, 0, 768, 300); hx.fillStyle = 'rgba(5,7,16,.78)'; hx.fillRect(0, 0, 768, 300); hx.strokeStyle = 'rgba(150,180,255,.65)'; hx.lineWidth = 2; hx.strokeRect(2,2,764,296);
