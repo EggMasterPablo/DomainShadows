@@ -1610,16 +1610,11 @@ const trigger = s => {
 const factory = new XRHandModelFactory();
 const hands = [0, 1].map(i => {
   const h = renderer.xr.getHand(i);
-  // Use the articulated skinned hand profile instead of floating joint-spheres. Tint the loaded
-  // mesh subtly so fingers and knuckles read clearly against both bright and dark domains.
-  const model = factory.createHandModel(h, 'mesh'); h.add(model);
-  model.traverse?.(o => { if (o.isMesh && o.material) { const mats=Array.isArray(o.material)?o.material:[o.material]; for(const m of mats){ if(m.color) m.color.set(0xc5b7ad); if('roughness' in m)m.roughness=.72; if('metalness' in m)m.metalness=.02; m.needsUpdate=true; } } });
-  // The mesh loader can finish asynchronously, so the render loop applies the same material
-  // treatment once the articulated geometry actually arrives.
+  // Revert to the joint-sphere hand model: show tracked joints only, not a skinned hand mesh.
+  const model = factory.createHandModel(h, 'spheres'); h.add(model);
   h.userData.jjtHandModel=model; h.userData.jjtStyled=false; scene.add(h); return h;
 });
-// Phase 7: short, readable casting poses on the rendered hand meshes. The tracked XR joints
-// remain untouched, so gesture recognition stays driven by the user's real hands.
+// Brief casting cues animate the joint-only model without changing tracked joints or gesture detection.
 const castMotions = [];
 function playCastingMotion(kind='technique') {
   const both = ['purple','meteor','playfulcloud','domain'].includes(kind);
