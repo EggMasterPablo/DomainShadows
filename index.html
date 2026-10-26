@@ -47,8 +47,8 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 /* ============ TUNING ============ */
 const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
-const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.022;
-const SHRINE_D = 0.52, COFFIN_D = 0.43, COFFIN_T = 0.16, SHADOW_D = 0.38, GRACE = 260;
+const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.032;
+const SHRINE_D = 0.44, COFFIN_D = 0.38, COFFIN_T = 0.12, SHADOW_D = 0.32, GRACE = 260;
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
 const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850 };
 const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
@@ -475,7 +475,7 @@ function isThumbsUp(h) {
   const tip = jp(h, 'thumb-tip'), prox = jp(h, 'thumb-phalanx-proximal'), wrist = jp(h, 'wrist'), indexBase = jp(h, 'index-finger-metacarpal');
   if (!tip || !prox || !wrist || !indexBase) return false;
   // Thumb tip must point clearly above its base while the four long fingers are curled.
-  return tip.y > prox.y + 0.015 && tip.distanceTo(indexBase) > 0.035 && tip.distanceTo(wrist) > 0.055;
+  return tip.y > prox.y + 0.035 && tip.y > wrist.y + 0.025 && tip.distanceTo(indexBase) > 0.065 && tip.distanceTo(wrist) > 0.075;
 }
 const fingerMem = [{}, {}];
 function fingerStates(hi) {
@@ -492,7 +492,7 @@ function isCrossed(h) {
   if (!iT || !mT || !iB || !mB || !a || !b) return false;
   v1.subVectors(b, a).normalize();
   const tipSide = v2.subVectors(iT, mT).dot(v1), baseSide = v3.subVectors(iB, mB).dot(v1);
-  return tipSide * baseSide < -0.0008 && Math.abs(tipSide) > CROSS * .25;
+  return tipSide * baseSide < -0.0018 && Math.abs(tipSide) > CROSS * .65 && Math.abs(baseSide) > 0.012;
 }
 function analyze(hi) {
   const e = fingerStates(hi); if (!e) return null;
@@ -500,7 +500,7 @@ function analyze(hi) {
   const raised = !!w && w.y > headY - RAISE, n = FINGERS.filter(f => e[f]).length;
   let pose = 'other';
   if (n === 0) pose = 'fist'; else if (n === 4) pose = 'open';
-  else if (e.index && e.middle && !e.ring && !e.pinky) pose = isCrossed(hands[hi]) ? 'cross' : 'peace';
+  else if (e.index && e.middle && !e.ring && !e.pinky) { const crossed = isCrossed(hands[hi]); pose = crossed ? 'cross' : 'peace'; }
   else if (e.index && e.middle && e.ring && !e.pinky) pose = 'three';
   else if (e.index && !e.middle && !e.ring && !e.pinky) pose = 'point';
   if (n === 0 && isThumbsUp(hands[hi])) pose = 'thumbsup';
@@ -567,7 +567,7 @@ function gameStep(dt, info, wd) {
   if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
   else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
   // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
-  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .8 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
+  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && !(a.n === 0 && b.n === 0 && wd < SHADOW_D) && wd < .62 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
   if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
   if (rctWasActive && !G.rct) rctReadyAt = performance.now() + RCT_COOLDOWN * 1000;
   rctWasActive = G.rct;
@@ -694,7 +694,7 @@ renderer.setAnimationLoop(time => {
   const bothUp = !!(a && b && a.raised && b.raised);
   let two = null, wd = 99;
   if (a && b) { const w0 = jp(hands[0], 'wrist'), w1 = jp(hands[1], 'wrist'); if (w0 && w1) wd = w0.distanceTo(w1); }
-  const isIM = x => !!x && (x.pose === 'peace' || x.pose === 'cross');
+  const isIM = x => !!x && x.pose === 'peace';
   let pickSign = null;
   if (awaitingDomainPick && renderer.xr.isPresenting) {
     // A domain's own symbol selects it; no pointer/menu selection is used.
@@ -720,7 +720,7 @@ renderer.setAnimationLoop(time => {
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
     if (gameStarted && !wasPickingDomain && !two && inf && inf.raised) {
-      const voidGestureActive = info.some(x => x && x.raised && x.pose === 'cross');
+      const voidGestureActive = info.some(x => x && x.raised && (x.pose === 'cross' || (x.pose === 'peace' && isCrossed(hands[info.indexOf(x)]))));
       if (chosenDomain === 'void' && inf.pose === 'cross') s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
       else if (inf.pose === 'point') s = 'dogs';
