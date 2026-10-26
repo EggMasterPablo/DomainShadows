@@ -6,7 +6,7 @@
 <title>Domain Expansion: Jujutsu Trials</title>
 <style>
 body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
-#domain-menu{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:radial-gradient(ellipse at center,#17172a 0%,#050509 72%);color:#fff;text-align:center}
+#domain-menu{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:radial-gradient(ellipse at center,#17172a 0%,#050509 72%);color:#fff;text-align:center}
 #domain-menu .panel{width:min(760px,100%);padding:26px 22px;border:1px solid #69698d;border-radius:20px;background:rgba(8,8,18,.94);box-shadow:0 0 38px #33336a}
 #domain-menu h1{font-size:clamp(26px,5vw,44px);margin:0 0 8px}#domain-menu p{color:#c6c6dd;margin:0 0 20px}
 #domain-menu .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -14,6 +14,8 @@ body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
 #domain-menu button:hover,#domain-menu button:focus{transform:translateY(-2px);border-color:#fff;outline:none}
 #domain-menu button strong{display:block;font-size:18px;margin-bottom:5px}#domain-menu button span{display:block;color:#d2d2e6;font-size:13px;line-height:1.4}
 #domain-menu .hint{font-size:12px;color:#9999b5;margin-top:18px}
+#domain-menu .status{font-size:14px;color:#b8ffd0;margin-top:12px;min-height:20px}
+.webxr-button:disabled{opacity:.35!important;pointer-events:none!important}
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -30,7 +32,7 @@ body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
       <button data-domain="coffin"><strong>Coffin of the Iron Mountain</strong><span>Volcanic domain with powerful continuous heat damage.</span></button>
       <button data-domain="shadow"><strong>Chimera Shadow Garden</strong><span>Shadow pressure plus a major boost to all shikigami damage.</span></button>
     </div>
-    <div class="hint">Your choice lasts until you reload the page. You can still summon shikigami and use Reverse Cursed Technique.</div>
+    <div class="hint">Enter VR, choose a domain in-headset, and choose again after each defeat.</div><div class="status" id="menu-status">Select a domain to unlock VR.</div>
   </div>
 </div>
 <script>
@@ -45,19 +47,37 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 /* ============ TUNING ============ */
 const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
-const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.035;
+const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.022;
 const SHRINE_D = 0.42, COFFIN_D = 0.34, COFFIN_T = 0.11, SHADOW_D = 0.28, GRACE = 180;
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
-const HOLD = { void: 1250, shrine: 1450, coffin: 1350, shadow: 1400, normal: 850, dogs: 750, nue: 750, toad: 800, mahoraga: 1100 };
+const HOLD = { void: 1450, shrine: 1450, coffin: 1350, shadow: 1400, normal: 850, dogs: 750, nue: 850, toad: 800, mahoraga: 1100 };
 const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
+const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24 };
+const DOMAIN_COOLDOWN = 14, RCT_COOLDOWN = 7, PUNCH_COOLDOWN = 0.65;
 const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40 };
-const CE_MAX = 100, CE_REGEN = 7, DOMAIN_DRAIN = 1.8, RCT_DRAIN = 12, RCT_HEAL = 8, DOMAIN_LOCKOUT = 3.5;
-let chosenDomain = null, gameStarted = false;
+const CE_MAX = 100, CE_REGEN = 2.8, DOMAIN_DRAIN = 7.5, RCT_DRAIN = 18, RCT_HEAL = 7, DOMAIN_LOCKOUT = 14;
+let chosenDomain = null, gameStarted = false, awaitingDomainPick = true;
 const domainMenu = document.getElementById('domain-menu');
-domainMenu.querySelectorAll('button[data-domain]').forEach(button => button.addEventListener('click', () => {
-  chosenDomain = button.dataset.domain; gameStarted = true; domainMenu.style.display = 'none';
-  say('Chosen domain: ' + INFO[chosenDomain].en);
-}));
+const menuStatus = document.getElementById('menu-status');
+let vrButton = null;
+// Domain selection is deliberately an in-headset menu. The desktop DOM menu is hidden.
+domainMenu.style.display = 'none';
+function showDomainMenu(message = 'Choose your domain') {
+  awaitingDomainPick = true; gameStarted = false;
+  if (vrDomainGroup) vrDomainGroup.visible = true;
+  vrMenuMessage = message;
+  drawVrDomainMenu();
+}
+function hideDomainMenu() { if (vrDomainGroup) vrDomainGroup.visible = false; }
+function chooseDomainInVR(name) {
+  if (!awaitingDomainPick || !renderer.xr.isPresenting) return;
+  chosenDomain = name; awaitingDomainPick = false; hideDomainMenu();
+  Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
+  curses.length = 0; shiki.length = 0; fxs.length = 0; pending = null;
+  if (envName !== 'normal') swapTo('normal');
+  gameStarted = true; G.nextWave = 1.5;
+  say('Chosen domain: ' + INFO[chosenDomain].en + ' — survive the curses');
+}
 
 /* ============ SIGNS ============
  Anime-inspired hand-sign recognition (hold steadily; two-hand signs take longer):
@@ -78,7 +98,53 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true; renderer.xr.setFramebufferScaleFactor(RES); renderer.xr.setFoveation(1);
 document.body.appendChild(renderer.domElement);
-document.body.appendChild(VRButton.createButton(renderer));
+vrButton = VRButton.createButton(renderer); vrButton.disabled = false; document.body.appendChild(vrButton);
+renderer.xr.addEventListener('sessionstart', () => {
+  gameStarted = false; chosenDomain = null;
+  Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
+  showDomainMenu('CHOOSE YOUR DOMAIN');
+});
+renderer.xr.addEventListener('sessionend', () => { gameStarted = false; hideDomainMenu(); });
+
+// Floating in-VR domain picker: aim a controller at a card and press its trigger.
+let vrMenuMessage = 'CHOOSE YOUR DOMAIN';
+const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainSelection';
+vrDomainGroup.position.set(0, 0, -2.15); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
+const vrDomainButtons = [];
+function makeMenuTexture(title, subtitle, selected=false) {
+  const c = document.createElement('canvas'); c.width = 640; c.height = 240;
+  const x = c.getContext('2d'); x.fillStyle = selected ? '#332b59' : '#101321'; x.fillRect(0,0,640,240);
+  x.strokeStyle = selected ? '#f7d66b' : '#a5b4fc'; x.lineWidth = 8; x.strokeRect(5,5,630,230);
+  x.textAlign = 'center'; x.fillStyle = '#ffffff'; x.font = 'bold 38px sans-serif'; x.fillText(title,320,92);
+  x.fillStyle = '#cdd5f7'; x.font = '24px sans-serif'; x.fillText(subtitle,320,150);
+  if (selected) { x.fillStyle='#f7d66b'; x.font='bold 22px sans-serif'; x.fillText('SELECTED',320,202); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const vrMenuBg = new THREE.Mesh(new THREE.PlaneGeometry(2.85,1.85), new THREE.MeshBasicMaterial({color:0x070913, transparent:true, opacity:.94, depthTest:false}));
+vrMenuBg.position.set(0,0,0.03); vrDomainGroup.add(vrMenuBg);
+const vrMenuTitle = new THREE.Mesh(new THREE.PlaneGeometry(2.55,.26), new THREE.MeshBasicMaterial({map:makeMenuTexture('CHOOSE YOUR DOMAIN','Aim and press trigger'), depthTest:false, transparent:true}));
+vrMenuTitle.position.set(0,.66,-.005); vrDomainGroup.add(vrMenuTitle);
+const DOMAIN_MENU_ITEMS = [
+  ['void','Unlimited Void','Stun + heavy damage',-.67,.22],
+  ['shrine','Malevolent Shrine','Rapid slashing damage',.67,.22],
+  ['coffin','Coffin of the Iron Mountain','Volcanic heat damage',-.67,-.32],
+  ['shadow','Chimera Shadow Garden','Boosts shikigami damage',.67,-.32]
+];
+for (const [key,title,sub,x,y] of DOMAIN_MENU_ITEMS) {
+  const mat = new THREE.MeshBasicMaterial({map:makeMenuTexture(title,sub), transparent:true, depthTest:false, side:THREE.DoubleSide});
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(1.27,.48),mat); card.position.set(x,y,0); card.userData.domain=key; vrDomainGroup.add(card); vrDomainButtons.push(card);
+}
+const vrRaycaster = new THREE.Raycaster();
+function drawVrDomainMenu() {
+  if (!vrMenuTitle) return;
+  vrMenuTitle.material.map.dispose(); vrMenuTitle.material.map = makeMenuTexture(vrMenuMessage, 'Aim with either controller and press trigger'); vrMenuTitle.material.needsUpdate = true;
+}
+function selectDomainFromController(controller) {
+  if (!awaitingDomainPick || !renderer.xr.isPresenting || !vrDomainGroup.visible) return;
+  vrRaycaster.setFromXRController(controller);
+  const hits = vrRaycaster.intersectObjects(vrDomainButtons, false);
+  if (hits.length) chooseDomainInVR(hits[0].object.userData.domain);
+}
 const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(2, 5, 2); scene.add(sun);
 const amb = new THREE.AmbientLight(0xffffff, 0.6); scene.add(amb);
 const pt = new THREE.PointLight(0xffffff, 0); scene.add(pt);
@@ -142,7 +208,7 @@ const A = (() => {
 })();
 ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(ev => addEventListener(ev, A.init, true));
 renderer.xr.addEventListener('sessionstart', A.init);
-[0, 1].forEach(i => { const c = renderer.xr.getController(i); c.addEventListener('selectstart', A.init); scene.add(c); });
+[0, 1].forEach(i => { const c = renderer.xr.getController(i); c.addEventListener('selectstart', () => { A.init(); selectDomainFromController(c); }); scene.add(c); });
 
 /* ---------- Shaders ---------- */
 const GLSL = `
@@ -372,7 +438,8 @@ function strike(c, sp) {
 const lastSummon = {};
 function summon(kind) {
   const now = performance.now();
-  if (now - (lastSummon[kind] || 0) < 1500) return;
+  const wait = (lastSummon[kind] || 0) + (SUMMON_COOLDOWN[kind] || 8) * 1000 - now;
+  if (wait > 0) { say(kind.toUpperCase() + ' cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
   if (G.ce < COST[kind]) { say('Not enough cursed energy'); return; }
   lastSummon[kind] = now; G.ce -= COST[kind];
   const p = playerPos().clone(), fwd = new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y = 0;
@@ -433,7 +500,8 @@ function isCrossed(h) {
   const iT = jp(h, 'index-finger-tip'), mT = jp(h, 'middle-finger-tip'), iB = jp(h, 'index-finger-phalanx-proximal'), mB = jp(h, 'middle-finger-phalanx-proximal'), a = jp(h, 'index-finger-metacarpal'), b = jp(h, 'pinky-finger-metacarpal');
   if (!iT || !mT || !iB || !mB || !a || !b) return false;
   v1.subVectors(b, a).normalize();
-  return v2.subVectors(iT, mT).dot(v1) * v3.subVectors(iB, mB).dot(v1) < 0 || iT.distanceTo(mT) < CROSS;
+  const tipSide = v2.subVectors(iT, mT).dot(v1), baseSide = v3.subVectors(iB, mB).dot(v1);
+  return tipSide * baseSide < -0.0008 && Math.abs(tipSide) > CROSS * .25;
 }
 function analyze(hi) {
   const e = fingerStates(hi); if (!e) return null;
@@ -450,6 +518,7 @@ function analyze(hi) {
 const state = [0, 1, 2].map(() => ({ cand: null, since: 0, fired: false, nullSince: 0 }));
 const activatedAt = Object.create(null);
 let lastDomainActivation = -Infinity;
+let domainReadyAt = 0, rctReadyAt = 0;
 function update(slot, sign, time) {
   const st = state[slot];
   if (sign) {
@@ -487,21 +556,28 @@ function requestDomain(name, force) {
   if (name !== 'normal' && chosenDomain && name !== chosenDomain) { say('Your chosen domain is ' + INFO[chosenDomain].en); return; }
   if (name !== 'normal' && !chosenDomain) { say('Choose a domain from the start menu first'); return; }
   if (pending || name === envName) return;
-  if (name !== 'normal' && !force) { const cost = DOMAIN_COST[name] ?? 40; if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; } G.ce -= cost; say(INFO[name].en + ' — ' + cost + ' CE'); }
+  if (name !== 'normal' && !force) {
+    const left = domainReadyAt - performance.now(); if (left > 0) { say('Domain cooldown: ' + (left / 1000).toFixed(1) + 's'); return; }
+    const cost = DOMAIN_COST[name] ?? 40; if (G.ce < cost) { say('Need ' + cost + ' cursed energy'); return; }
+    G.ce -= cost; domainReadyAt = performance.now() + DOMAIN_COOLDOWN * 1000; say(INFO[name].en + ' — ' + cost + ' CE');
+  }
   pending = { name, phase: 0, t: 0 };
   flashMat.color.set(INFO[name].flash); flash.visible = true; A.riser();
 }
 
 /* ---------- Game step: AI for curses + shikigami, punches, healing, waves ---------- */
 const prevW = [null, null], punchCd = [0, 0];
+let rctWasActive = false;
 function gameStep(dt, info, wd) {
   const t = TIME.value, pp = playerPos().clone(), [a, b] = info;
   // Cursed energy: steady recovery outside domains; domains are powerful but costly to maintain.
   if (envName === 'normal') G.ce = Math.min(CE_MAX, G.ce + CE_REGEN * dt);
   else { G.ce = Math.max(0, G.ce - DOMAIN_DRAIN * dt); if (G.ce <= 0) { requestDomain('normal', true); say('Cursed energy exhausted — domain collapsed'); } }
   // Reverse Cursed Technique trades a meaningful amount of CE for controlled healing.
-  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .48 && G.ce > 0 && G.hp < 100);
+  G.rct = !!(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .48 && G.ce > 0 && G.hp < 100 && performance.now() >= rctReadyAt);
   if (G.rct) { const spent = Math.min(G.ce, RCT_DRAIN * dt); G.ce -= spent; G.hp = Math.min(100, G.hp + RCT_HEAL * dt * (spent / Math.max(RCT_DRAIN * dt, .001))); }
+  if (rctWasActive && !G.rct) rctReadyAt = performance.now() + RCT_COOLDOWN * 1000;
+  rctWasActive = G.rct;
   // punches
   G.comboT -= dt;
   for (let hi = 0; hi < 2; hi++) {
@@ -509,7 +585,7 @@ function gameStep(dt, info, wd) {
     if (!w) { prevW[hi] = null; continue; }
     const sp = prevW[hi] ? w.distanceTo(prevW[hi]) / Math.max(dt, .001) : 0;
     prevW[hi] = prevW[hi] || new THREE.Vector3(); prevW[hi].copy(w);
-    if (info[hi].pose === 'fist' && sp > 2 && punchCd[hi] <= 0) { const c = nearest(w, .55); if (c) { punchCd[hi] = .35; strike(c, sp); } }
+    if (info[hi].pose === 'fist' && sp > 2 && punchCd[hi] <= 0) { const c = nearest(w, .55); if (c) { punchCd[hi] = PUNCH_COOLDOWN; strike(c, sp); } }
   }
   // curses: drift to the player, domain damage, stun
   const dd = { void: 14, shrine: 30, coffin: 22, shadow: 14 }[envName] || 0;
@@ -576,27 +652,36 @@ function gameStep(dt, info, wd) {
   }
   // waves
   if (!curses.length) { G.nextWave -= dt; if (G.nextWave <= 0) { G.wave++; for (let i = 0; i < 3 + G.wave * 2; i++) spawnCurse(); say('Wave ' + G.wave, 2.5); G.nextWave = 3; } }
-  // defeat: reset the run
-  if (G.hp <= 0) {
+  // Defeat ends the run but keeps the headset session active; the picker returns in VR.
+  if (G.hp <= 0 && gameStarted) {
+    const finalScore = G.score;
     curses.concat(shiki).forEach(o => world.remove(o.g)); curses.length = shiki.length = 0;
-    say('Exorcised. Score ' + G.score, 3.5); Object.assign(G, { hp: 100, ce: 100, wave: 0, score: 0, nextWave: 3, adapt: [0, 0, 0] }); requestDomain('normal', true);
+    G.hp = 0; G.ce = 0; gameStarted = false; pending = null; flash.visible = false; flashMat.opacity = 0;
+    if (envName !== 'normal') swapTo('normal');
+    Object.assign(G, { hp: 100, ce: CE_MAX, wave: 0, score: 0, nextWave: 1.5, adapt: [0,0,0], combo: 0, comboT: 0 });
+    showDomainMenu('EXORCISED! SCORE ' + finalScore + ' — CHOOSE AGAIN');
   }
   if (G.msgT > 0) G.msgT -= dt;
 }
 
 /* ---------- HUD ---------- */
-const hcv = document.createElement('canvas'); hcv.width = 512; hcv.height = 200;
+const hcv = document.createElement('canvas'); hcv.width = 768; hcv.height = 300;
 const hx = hcv.getContext('2d'), hTex = new THREE.CanvasTexture(hcv); hTex.colorSpace = THREE.SRGBColorSpace;
 const hud = new THREE.Sprite(new THREE.SpriteMaterial({ map: hTex, transparent: true, depthTest: false, fog: false }));
-hud.scale.set(.6, .234, 1); hud.position.set(0, -.3, -.9); hud.renderOrder = 999; camera.add(hud);
+hud.scale.set(.82, .32, 1); hud.position.set(0, -.31, -.9); hud.renderOrder = 999; camera.add(hud);
 let hudT = 0;
 function drawHud(dbg) {
-  hx.clearRect(0, 0, 512, 200); hx.fillStyle = 'rgba(0,0,0,.55)'; hx.fillRect(0, 0, 512, 200);
-  const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(90, y, 400, 22); hx.fillStyle = col; hx.fillRect(90, y, 400 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
-  bar(12, G.hp / 100, '#e0413a', 'HP'); bar(44, G.ce / CE_MAX, '#4aa8ff', 'CE');
-  hx.font = '24px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`Wave ${G.wave}   Score ${G.score}   Best ${G.best}`, 10, 100);
-  hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'Reverse Cursed Technique (thumbs-up)' : (envName === 'normal' ? 'Chosen: ' + (chosenDomain ? INFO[chosenDomain].en : 'none') + ' | CE recovering' : 'Domain: ' + INFO[envName].en + '  (-' + DOMAIN_DRAIN.toFixed(1) + ' CE/s)'), 10, 135);
-  if (DEBUG) { hx.font = '18px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 175); }
+  hx.clearRect(0, 0, 768, 300); hx.fillStyle = 'rgba(5,7,16,.78)'; hx.fillRect(0, 0, 768, 300); hx.strokeStyle = 'rgba(150,180,255,.65)'; hx.lineWidth = 2; hx.strokeRect(2,2,764,296);
+  const bar = (y, v, col, lab) => { hx.fillStyle = '#222'; hx.fillRect(100, y, 620, 22); hx.fillStyle = col; hx.fillRect(100, y, 620 * Math.max(0, Math.min(1, v)), 22); hx.fillStyle = '#fff'; hx.font = '20px sans-serif'; hx.fillText(lab, 10, y + 18); };
+  bar(16, G.hp / 100, '#e0413a', 'HP'); bar(48, G.ce / CE_MAX, '#4aa8ff', 'CE');
+  hx.font = '23px sans-serif'; hx.fillStyle = '#ffd24a'; hx.fillText(`WAVE ${G.wave}   SCORE ${G.score}   BEST ${G.best}`, 10, 105);
+  hx.font = '19px sans-serif'; hx.fillStyle = '#fff'; hx.fillText(G.msgT > 0 ? G.msg : G.rct ? 'RCT ACTIVE — healing / CE draining' : (envName === 'normal' ? 'Domain ready: ' + (chosenDomain ? INFO[chosenDomain].en : 'choose one') + ' | CE regen 2.8/s' : 'DOMAIN: ' + INFO[envName].en + ' | CE drain ' + DOMAIN_DRAIN.toFixed(1) + '/s'), 10, 139);
+  const sec = ms => Math.max(0, ms - performance.now()) / 1000;
+  hx.font = '16px sans-serif'; hx.fillStyle = '#cdd8ff';
+  hx.fillText('CD  Dogs ' + sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1) + 's   Nue ' + sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1) + 's   Toad ' + sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1) + 's', 10, 174);
+  hx.fillText('Mahoraga ' + sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1) + 's   Domain ' + sec(domainReadyAt).toFixed(1) + 's   RCT ' + sec(rctReadyAt).toFixed(1) + 's', 10, 201);
+  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   Controls: 1 Dogs | 2 Nue | 3 Toad | 4 Mahoraga', 10, 228);
+  if (DEBUG) { hx.font = '15px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 267); }
   hTex.needsUpdate = true;
 }
 const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
@@ -604,7 +689,7 @@ const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 /* Desktop test keys */
 const KEYS = { 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
 addEventListener('keydown', e => {
-  const k = KEYS[e.key.toLowerCase()]; if (k && gameStarted) trigger(k);
+  const k = KEYS[e.key.toLowerCase()]; if (k && gameStarted && !awaitingDomainPick) trigger(k);
   if (e.code === 'Space' && gameStarted) { const c = nearest(new THREE.Vector3(0, 1.5, 0)); if (c) strike(c, 5); }
 });
 
@@ -630,16 +715,17 @@ renderer.setAnimationLoop(time => {
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
     if (gameStarted && !two && inf && inf.raised) {
+      const voidGestureActive = info.some(x => x && x.raised && x.pose === 'cross');
       if (chosenDomain === 'void' && inf.pose === 'cross') s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
       else if (inf.pose === 'point') s = 'dogs';
-      else if (inf.pose === 'peace') s = 'nue';
+      else if (inf.pose === 'peace' && !voidGestureActive) s = 'nue';
       else if (inf.pose === 'three') s = 'toad';
     }
     update(hi, s, time);
   }
   if (gameStarted) gameStep(dt, info, wd);
-  hudT -= dt; if (gameStarted && hudT <= 0) { hudT = .1; drawHud('L: ' + desc(a) + '  R: ' + desc(b)); }
+  hudT -= dt; if (hudT <= 0) { hudT = .1; drawHud('L: ' + desc(a) + '  R: ' + desc(b)); }
 
   if (pending) {
     pending.t += dt;
