@@ -16,12 +16,15 @@ body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
 #domain-menu .hint{font-size:12px;color:#9999b5;margin-top:18px}
 #domain-menu .status{font-size:14px;color:#b8ffd0;margin-top:12px;min-height:20px}
 .webxr-button:disabled{opacity:.35!important;pointer-events:none!important}
+#quit-training{display:none;position:fixed;top:12px;right:12px;z-index:9999;border:1px solid #ff8ab8;border-radius:10px;background:rgba(35,8,24,.94);color:#fff;padding:11px 15px;font:600 14px system-ui,Arial,sans-serif;box-shadow:0 0 18px #ff4fd855;cursor:pointer}
+#quit-training:hover,#quit-training:focus{background:#7b1748;outline:2px solid #fff}
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
 </head>
 <body>
+<button id="quit-training" type="button" aria-label="Quit training and return to mode selection">✕ Quit Training</button>
 <div id="domain-menu" role="dialog" aria-modal="true" aria-labelledby="menu-title">
   <div class="panel">
     <h1 id="menu-title">Choose Your Domain</h1>
@@ -147,10 +150,20 @@ function applyVowPick(index){
 }
 const domainMenu = document.getElementById('domain-menu');
 const menuStatus = document.getElementById('menu-status');
+const quitTrainingButton = document.getElementById('quit-training');
 let vrButton = null;
+function quitTraining() {
+  if (!trainingMode) return;
+  trainingMode = false; gameStarted = false; awaitingDomainPick = false; awaitingVowPick = false;
+  curses.length = 0; shiki.length = 0; fxs.length = 0; pending = null;
+  quitTrainingButton.style.display = 'none';
+  showModeMenu('TRAINING ENDED — SELECT A MODE');
+}
+quitTrainingButton.addEventListener('click', quitTraining);
 // Domain selection is deliberately an in-headset menu. The desktop DOM menu is hidden.
 domainMenu.style.display = 'none';
 function showModeMenu(message = 'SELECT GAME MODE') {
+  quitTrainingButton.style.display = 'none';
   awaitingModePick = true; awaitingDomainPick = false; awaitingVowPick = false; gameStarted = false; modeSettingsOpen = false; settingsPanelOpen = false;
   if (vrDomainGroup) vrDomainGroup.visible = true;
   vrMenuMessage = message;
@@ -210,9 +223,9 @@ function chooseDomainInVR(name) {
   if (chosenDomain === 'sukuna') { G.hp = 9999; G.ce = 999999; G.score += 100000; say('THE KING OF CURSES AWAKENS — OVERWHELMING POWER', 6); }
   curses.length = 0; shiki.length = 0; fxs.length = 0; pending = null;
   if (envName !== 'normal') swapTo('normal');
-  gameStarted = true; G.nextWave = trainingMode ? Infinity : 1.5; if(trainingMode){spawnTrainingDummy();say('TRAINING ROOM — INFINITE-HP DUMMY · DAMAGE NUMBERS ON HIT',6);}
+  gameStarted = true; G.nextWave = trainingMode ? Infinity : 1.5; quitTrainingButton.style.display = trainingMode ? 'block' : 'none'; if(trainingMode){spawnTrainingDummy();say('TRAINING ROOM — INFINITE-HP DUMMY · DAMAGE NUMBERS ON HIT',6);}
   if (chosenDomain === 'todo') { if (envName !== 'normal') swapTo('normal'); say('TODO MOVESET: clap your open palms for BOOGIE WOOGIE; point for Todo’s close-range combo'); }
-  else if (chosenDomain === 'hakari') say('HAKARI: point = Sliding Doors · peace = Rush Combo · three fingers = Shoulder Charge · fists together = Idle Death Gamble');
+  else if (chosenDomain === 'hakari') say('HAKARI: point = ranged Sliding Doors · peace = ranged Rush Wave · three fingers = ranged Shoulder Shockwave · fists together = Idle Death Gamble');
   else if (chosenDomain === 'sukuna') say('PLAYABLE SUKUNA — DISMANTLE · CLEAVE · FIRE ARROW · MALEVOLENT SHRINE · WORLD-CUTTING SLASH',6);
   else say('Chosen domain: ' + INFO[chosenDomain].en + ' — survive the curses');
 }
@@ -1549,17 +1562,20 @@ function hakariMove(kind) {
   const wait=(hakariLastMove[kind]||0)+(HAKARI_CD[kind]||4)*1000-now;if(wait>0){say(kind.toUpperCase()+' cooldown '+(wait/1000).toFixed(1)+'s');return;}
   const cost=HAKARI_COST[kind]||0;if(G.ce<cost){say('Not enough cursed energy');return;}hakariLastMove[kind]=now;G.ce-=cost;
   if(kind==='doors'){
-    const center=p.clone().addScaledVector(dir,3);center.y=Math.max(1.2,p.y);
+    const center=p.clone().addScaledVector(dir,10);center.y=Math.max(1.2,p.y);
     const doorMat=new THREE.MeshStandardMaterial({color:0x3a293f,emissive:0xff4fd8,emissiveIntensity:.65,metalness:.4});
     for(const side of [-1,1]){const door=new THREE.Mesh(new THREE.BoxGeometry(.9,2.3,.16),doorMat);door.position.copy(center).add(new THREE.Vector3(-dir.z*side*.48,0,dir.x*side*.48));door.rotation.y=Math.atan2(dir.x,dir.z);world.add(door);setTimeout(()=>world.remove(door),700);}
-    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(center);if(rel.length()<2.2){hurt(c,42);c.stun=Math.max(c.stun||0,.8);hits++;}}
+    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(center);if(rel.length()<2.8){hurt(c,42);c.stun=Math.max(c.stun||0,.8);hits++;}}
     fxRing(center,0xff4fd8,2.4,.35);say('HAKARI: SLIDING DOORS'+(hits?' · '+hits+' HIT':''));
   } else if(kind==='rush'){
-    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(4,along)));if(along>0&&along<4.2&&c.g.position.distanceTo(closest)<1.6){hurt(c,22);c.stun=Math.max(c.stun||0,.25);hits++;}}
-    fxSlash(p.clone().addScaledVector(dir,2),dir,0xff4fd8,2.2,.3);say('HAKARI: RUSH COMBO'+(hits?' · '+hits+' HIT':''));
+    // Ranged pink energy lane: Hakari can hit targets well beyond melee distance.
+    const range=14; let hits=0;
+    for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(range,along)));if(along>0&&along<range&&c.g.position.distanceTo(closest)<2.0){hurt(c,30);c.stun=Math.max(c.stun||0,.35);hits++;fxImpactBurst(c.g.position.clone(),0xff4fd8,.65,.18);}}
+    fxSlash(p.clone().addScaledVector(dir,7),dir,0xff4fd8,3.2,.38);fxRing(p.clone().addScaledVector(dir,12),0xff4fd8,2.1,.28);say('HAKARI: RUSH WAVE · 14M RANGE'+(hits?' · '+hits+' HIT':''));
   } else if(kind==='shoulder'){
-    let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(5,along)));if(along>0&&along<5.2&&c.g.position.distanceTo(closest)<1.7){hurt(c,36);c.stun=Math.max(c.stun||0,.7);c.g.position.addScaledVector(dir,1.8);hits++;}}
-    fxRing(p.clone().addScaledVector(dir,3),0xff4fd8,2,.3);say('HAKARI: SHOULDER CHARGE'+(hits?' · '+hits+' HIT':''));
+    // Extended shoulder shockwave keeps this technique useful at range too.
+    const range=11; let hits=0;for(const c of curses){const rel=c.g.position.clone().sub(p),along=rel.dot(dir),closest=p.clone().addScaledVector(dir,Math.max(0,Math.min(range,along)));if(along>0&&along<range&&c.g.position.distanceTo(closest)<1.9){hurt(c,36);c.stun=Math.max(c.stun||0,.7);if(!c.trainingDummy)c.g.position.addScaledVector(dir,1.8);hits++;}}
+    fxRing(p.clone().addScaledVector(dir,8),0xff4fd8,2.5,.34);say('HAKARI: SHOULDER SHOCKWAVE · 11M RANGE'+(hits?' · '+hits+' HIT':''));
   }
 }
 
@@ -1648,10 +1664,11 @@ function straightness(h, f) {
   return tot < 1e-4 ? null : pr.distanceTo(ti) / tot;
 }
 function isThumbsUp(h) {
-  const tip = jp(h, 'thumb-tip'), prox = jp(h, 'thumb-phalanx-proximal'), wrist = jp(h, 'wrist'), indexBase = jp(h, 'index-finger-metacarpal');
-  if (!tip || !prox || !wrist || !indexBase) return false;
-  // Thumb tip must point clearly above its base while the four long fingers are curled.
-  return tip.y > prox.y + 0.035 && tip.y > wrist.y + 0.025 && tip.distanceTo(indexBase) > 0.065 && tip.distanceTo(wrist) > 0.075;
+  const tip = jp(h, 'thumb-tip'), prox = jp(h, 'thumb-phalanx-proximal'), wrist = jp(h, 'wrist'), indexBase = jp(h, 'index-finger-metacarpal'), pinkyBase = jp(h, 'pinky-finger-metacarpal');
+  if (!tip || !prox || !wrist || !indexBase || !pinkyBase) return false;
+  // Require a clearly raised thumb, separated from the palm; a curled thumb stays a fist.
+  const palmWidth = indexBase.distanceTo(pinkyBase);
+  return tip.y > prox.y + 0.055 && tip.y > wrist.y + 0.045 && tip.distanceTo(indexBase) > Math.max(0.085, palmWidth * 0.42) && tip.distanceTo(wrist) > 0.10;
 }
 const fingerMem = [{}, {}];
 function fingerStates(hi) {
@@ -1976,7 +1993,7 @@ function drawHud(dbg) {
   hx.fillStyle='#fff';hx.font='17px sans-serif'; const words=status.split(' '); let line='', yy=174;
   for(const word of words){const test=line?line+' '+word:word;if(hx.measureText(test).width>365){hx.fillText(line,24,yy);line=word;yy+=23;}else line=test;} if(line)hx.fillText(line,24,yy);
   card(430,122,586,116,'MOVES & COOLDOWNS','#9dbaff');
-  const controls=chosenDomain==='void'?'GOJO · Point Blue | Peace Red | Three Purple':chosenDomain==='shrine'?'SUKUNA · Point Dismantle | Peace Cleave | Three Fire Arrow':chosenDomain==='shadow'?'MEGUMI · Point Dogs | Peace Nue | Three Toad':chosenDomain==='todo'?'TODO · Point Combo | Clap Boogie Woogie':chosenDomain==='hakari'?'HAKARI · Point Doors | Peace Rush | Three Charge | Fists Jackpot':'JOGO · Point Ember Insects | Peace Flame Burst | Three Meteor';
+  const controls=chosenDomain==='void'?'GOJO · Point Blue | Peace Red | Three Purple':chosenDomain==='shrine'?'SUKUNA · Point Dismantle | Peace Cleave | Three Fire Arrow':chosenDomain==='shadow'?'MEGUMI · Point Dogs | Peace Nue | Three Toad':chosenDomain==='todo'?'TODO · Point Combo | Clap Boogie Woogie':chosenDomain==='hakari'?'HAKARI · Point Doors (ranged) | Peace Rush Wave | Three Shockwave | Fists Jackpot':'JOGO · Point Ember Insects | Peace Flame Burst | Three Meteor';
   hx.fillStyle='#fff';hx.font='16px sans-serif';hx.fillText(controls,446,174,550);
   const sec=ms=>Math.max(0,ms-performance.now())/1000;
   hx.fillStyle='#d5ddff';hx.font='15px sans-serif';hx.fillText(`Dogs ${sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(0)}s · Nue ${sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(0)}s · Toad ${sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(0)}s`,446,203);
@@ -1989,6 +2006,7 @@ const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 /* Desktop test keys */
 const KEYS = { y: 'hakari', b: 'boogie', t: 'todo', 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', 5: 'blue', 6: 'red', 7: 'purple', 8: 'dismantle', 9: 'cleave', 0: 'firearrow', '-': 'embers', '=': 'flameburst', '[': 'meteor', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && trainingMode && gameStarted) { quitTraining(); return; }
   // Settings and mode selection are deliberately available only before a run.
   if(awaitingModePick && !gameStarted){
     const key=e.key.toLowerCase();
