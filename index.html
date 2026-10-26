@@ -50,9 +50,9 @@ const SFX = true, VOL = 0.8, DEBUG = true, KANJI = true, RES = 1.0;
 const EXT = 0.85, CURL = 0.72, RAISE = 0.55, CROSS = 0.032;
 const SHRINE_D = 0.44, COFFIN_D = 0.38, COFFIN_T = 0.12, SHADOW_D = 0.32, GRACE = 260;
 // Domain signs require a deliberate, stable mudra; short tracking flickers won't activate them.
-const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850 };
-const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62 };
-const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24 };
+const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 850, blue: 550, red: 650, purple: 850, dismantle: 500, cleave: 600, firearrow: 800 };
+const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62, blue: 14, red: 20, purple: 38, dismantle: 10, cleave: 16, firearrow: 30 };
+const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24, blue: 3, red: 5, purple: 12, dismantle: 2, cleave: 3, firearrow: 9 };
 const DOMAIN_COOLDOWN = 14, RCT_COOLDOWN = 5, PUNCH_COOLDOWN = 0.65;
 const DOMAIN_COST = { void: 40, shrine: 44, coffin: 35, shadow: 40 };
 const CE_MAX = 100, CE_REGEN = 2.8, DOMAIN_DRAIN = 7.5, RCT_DRAIN = 18, RCT_HEAL = 7, DOMAIN_LOCKOUT = 14;
@@ -81,9 +81,9 @@ function chooseDomainInVR(name) {
 
 /* ============ SIGNS ============
  Anime-inspired hand-sign recognition (hold steadily; two-hand signs take longer):
-   raised crossed index/middle = Unlimited Void | raised open palm = leave domain
+   single raised thumbs-up = Unlimited Void | raised open palm = leave domain
    raised index = Divine Dogs | raised peace sign = Nue | raised three-finger sign = Max Toad
-   two raised peace signs held close = Malevolent Shrine | palms/fingertips pressed together = Coffin of the Iron Mountain
+   two raised peace signs held close = Malevolent Shrine | two open palms held side-by-side = Coffin of the Iron Mountain
    two fists held together = Chimera Shadow Garden | two three-finger signs together = Mahoraga
    Signs are gesture approximations based on tracked finger joints; hold times and release debounce reduce false activations.
  Fist punch fast at a curse = hit (chain hits for Black Flash)
@@ -120,9 +120,9 @@ function makeInstructionTexture(message) {
   const lines = message.split('\n');
   lines.forEach((line,i) => { x.fillText(line,512,100+i*68); });
   x.fillStyle = '#cdd5f7'; x.font = '30px sans-serif';
-  x.fillText('Unlimited Void: crossed index + middle fingers',512,270);
+  x.fillText('Unlimited Void: one raised thumbs-up',512,270);
   x.fillText('Malevolent Shrine: two peace signs together',512,315);
-  x.fillText('Iron Mountain: two open palms together',512,360);
+  x.fillText('Iron Mountain: hold both open palms side-by-side',512,360);
   x.fillText('Shadow Garden: two fists together',512,405);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
@@ -457,7 +457,49 @@ function summon(kind) {
     add(g, at(2.5), { hp: 300, ttl: 40, halo }); say('Divine General Mahoraga'); A.tone(55, 'sine', 1.5, .8, 30);
   }
 }
-const trigger = s => ENVS[s] ? requestDomain(s) : summon(s);
+function useTechnique(kind) {
+  const now = performance.now(), wait = (lastSummon[kind] || 0) + (SUMMON_COOLDOWN[kind] || 3) * 1000 - now;
+  if (wait > 0) { say(kind.toUpperCase() + ' cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
+  if (G.ce < COST[kind]) { say('Not enough cursed energy'); return; }
+  lastSummon[kind] = now; G.ce -= COST[kind];
+  const p = playerPos().clone(), dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0; if (dir.lengthSq() < .01) dir.set(0,0,-1); dir.normalize();
+  const target = nearest(p, 36), center = target ? target.g.position.clone() : p.clone().addScaledVector(dir, 8);
+  const hitRadius = (point, radius, dmg, color, stun=0) => {
+    fxBall(point, color, radius, .35);
+    for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(point) <= radius) { hurt(c, dmg * boost()); if (stun) c.stun = Math.max(c.stun || 0, stun); }
+  };
+  if (chosenDomain === 'void') {
+    if (kind === 'blue') {
+      fxBall(center, 0x287dff, 2.5, .5);
+      for (const c of curses) { const delta = p.clone().sub(c.g.position), d = delta.length(); if (d < 15 && d > .1) { c.g.position.addScaledVector(delta.normalize(), Math.min(2.8, 18/(d+1))); if (d < 9) hurt(c, 20 * boost()); } }
+      say('LIMITLESS: BLUE — attraction'); A.tone(180, 'sine', .35, .3, 45);
+    } else if (kind === 'red') {
+      hitRadius(center, 6, 34, 0xff4b55, .65);
+      for (const c of curses) { const d = c.g.position.distanceTo(center); if (d < 7) c.g.position.add(c.g.position.clone().sub(center).normalize().multiplyScalar((7-d)*.7)); }
+      say('LIMITLESS: RED — repulsion'); A.noise(.25, .4, 900, 120, 'lowpass');
+    } else {
+      const end = center.clone().addScaledVector(dir, 16); fxLine(p.clone().setY(1.5), end.clone().setY(1.5), 0x9c65ff, .7, .28); fxBall(end, 0x7e38ff, 3.2, .6);
+      for (const c of curses) { const rel = c.g.position.clone().sub(p), along = Math.max(0, Math.min(16, rel.dot(dir))), near = p.clone().addScaledVector(dir, along); if (rel.length() < 18 && c.g.position.distanceTo(near) < 2.2) hurt(c, 85 * boost()); }
+      say('LIMITLESS: HOLLOW PURPLE'); A.noise(.6, .6, 1800, 80, 'lowpass');
+    }
+  } else if (chosenDomain === 'shrine') {
+    if (kind === 'dismantle') {
+      fxLine(p.clone().setY(1.4), center.clone(), 0xff3545, .25, .09); if (target) hurt(target, 30 * boost());
+      for (const c of curses) if (c.g.position.distanceTo(center) < 2.2) hurt(c, 12 * boost());
+      say('SUKUNA: DISMANTLE'); A.tone(650, 'sawtooth', .18, .3, 120);
+    } else if (kind === 'cleave') {
+      hitRadius(center, 3.5, 48, 0xff162a, .25); say('SUKUNA: CLEAVE'); A.noise(.2, .35, 1800, 100, 'highpass');
+    } else {
+      const end = center.clone().addScaledVector(dir, 12); fxLine(p.clone().setY(1.5), end.clone().setY(1.5), 0xff7a22, .55, .2); hitRadius(end, 5, 65, 0xff5b1f, .8); say('SUKUNA: FIRE ARROW'); A.tone(100, 'sawtooth', .45, .5, 35);
+    }
+  }
+}
+const trigger = s => {
+  if (ENVS[s]) return requestDomain(s);
+  if (chosenDomain === 'void') return useTechnique(({dogs:'blue',nue:'red',toad:'purple',mahoraga:'purple',blue:'blue',red:'red',purple:'purple'})[s] || 'blue');
+  if (chosenDomain === 'shrine') return useTechnique(({dogs:'dismantle',nue:'cleave',toad:'firearrow',mahoraga:'firearrow',dismantle:'dismantle',cleave:'cleave',firearrow:'firearrow'})[s] || 'dismantle');
+  return summon(s);
+};
 
 /* ---------- Hands ---------- */
 const factory = new XRHandModelFactory();
@@ -673,14 +715,14 @@ function drawHud(dbg) {
   hx.font = '16px sans-serif'; hx.fillStyle = '#cdd8ff';
   hx.fillText('CD  Dogs ' + sec((lastSummon.dogs||0)+SUMMON_COOLDOWN.dogs*1000).toFixed(1) + 's   Nue ' + sec((lastSummon.nue||0)+SUMMON_COOLDOWN.nue*1000).toFixed(1) + 's   Toad ' + sec((lastSummon.toad||0)+SUMMON_COOLDOWN.toad*1000).toFixed(1) + 's', 10, 174);
   hx.fillText('Mahoraga ' + sec((lastSummon.mahoraga||0)+SUMMON_COOLDOWN.mahoraga*1000).toFixed(1) + 's   Domain ' + sec(domainReadyAt).toFixed(1) + 's   RCT ' + sec(rctReadyAt).toFixed(1) + 's', 10, 201);
-  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   Controls: 1 Dogs | 2 Nue | 3 Toad | 4 Mahoraga', 10, 228);
+  hx.fillText('Punch ' + Math.max(...punchCd,0).toFixed(1) + 's   Point / Peace / 3 fingers = techniques for Void or Shrine', 10, 228);
   if (DEBUG) { hx.font = '15px sans-serif'; hx.fillStyle = '#aaa'; hx.fillText(dbg + (!SFX || A.ok() ? '' : '  (pinch for sound)'), 10, 267); }
   hTex.needsUpdate = true;
 }
 const desc = x => x ? x.pose + (x.raised ? ' (up)' : ' (low)') : '-';
 
 /* Desktop test keys */
-const KEYS = { 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
+const KEYS = { 1: 'dogs', 2: 'nue', 3: 'toad', 4: 'mahoraga', 5: 'blue', 6: 'red', 7: 'purple', 8: 'dismantle', 9: 'cleave', 0: 'firearrow', v: 'void', s: 'shrine', c: 'coffin', h: 'shadow', n: 'normal' };
 addEventListener('keydown', e => {
   const k = KEYS[e.key.toLowerCase()]; if (k && gameStarted && !awaitingDomainPick) trigger(k);
   if (e.code === 'Space' && gameStarted) { const c = nearest(new THREE.Vector3(0, 1.5, 0)); if (c) strike(c, 5); }
@@ -698,12 +740,9 @@ renderer.setAnimationLoop(time => {
   let pickSign = null;
   if (awaitingDomainPick && renderer.xr.isPresenting) {
     // A domain's own symbol selects it; no pointer/menu selection is used.
-    if (info.some(x => x && x.raised && x.pose === 'cross')) pickSign = 'void';
+    if (info.some(x => x && x.raised && x.pose === 'thumbsup') && !(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .62)) pickSign = 'void';
     else if (a && b && a.raised && b.raised && isIM(a) && isIM(b) && wd < SHRINE_D) pickSign = 'shrine';
-    else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
-      const m0 = jp(hands[0], 'middle-finger-tip'), m1 = jp(hands[1], 'middle-finger-tip');
-      if (m0 && m1 && m0.distanceTo(m1) < COFFIN_T) pickSign = 'coffin';
-    } else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
+    else if (a && b && a.raised && b.raised && a.pose === 'open' && b.pose === 'open' && wd < 0.58) pickSign = 'coffin'; else if (a && b && a.raised && b.raised && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) pickSign = 'shadow';
   }
   const wasPickingDomain = awaitingDomainPick;
   update(3, pickSign, time);
@@ -711,21 +750,18 @@ renderer.setAnimationLoop(time => {
     if (chosenDomain === 'shadow' && a.pose === 'fist' && b.pose === 'fist' && wd < SHADOW_D) two = 'shadow';
     else if (chosenDomain === 'shrine' && isIM(a) && isIM(b) && wd < SHRINE_D) two = 'shrine';
     else if (a.pose === 'three' && b.pose === 'three' && wd < .42) two = 'mahoraga';
-    else if (chosenDomain === 'coffin' && a.pose === 'open' && b.pose === 'open' && wd < COFFIN_D) {
-      const m0 = jp(hands[0], 'middle-finger-tip'), m1 = jp(hands[1], 'middle-finger-tip');
-      if (m0 && m1 && m0.distanceTo(m1) < COFFIN_T) two = 'coffin';
-    }
+    else if (chosenDomain === 'coffin' && a.pose === 'open' && b.pose === 'open' && wd < 0.58) two = 'coffin';
   }
   update(2, two, time);
   for (let hi = 0; hi < 2; hi++) {
     const inf = info[hi]; let s = null;
     if (gameStarted && !wasPickingDomain && !two && inf && inf.raised) {
       const voidGestureActive = info.some(x => x && x.raised && (x.pose === 'cross' || (x.pose === 'peace' && isCrossed(hands[info.indexOf(x)]))));
-      if (chosenDomain === 'void' && inf.pose === 'cross') s = 'void';
+      if (chosenDomain === 'void' && inf.pose === 'thumbsup' && !(a && b && a.pose === 'thumbsup' && b.pose === 'thumbsup' && wd < .62)) s = 'void';
       else if (inf.pose === 'open' && !(bothUp && wd < .6)) s = 'normal';
-      else if (inf.pose === 'point') s = 'dogs';
-      else if (inf.pose === 'peace' && !voidGestureActive) s = 'nue';
-      else if (inf.pose === 'three') s = 'toad';
+      else if (inf.pose === 'point') s = chosenDomain === 'shrine' ? 'dismantle' : chosenDomain === 'void' ? 'blue' : 'dogs';
+      else if (inf.pose === 'peace' && !voidGestureActive) s = chosenDomain === 'shrine' ? 'cleave' : chosenDomain === 'void' ? 'red' : 'nue';
+      else if (inf.pose === 'three') s = chosenDomain === 'shrine' ? 'firearrow' : chosenDomain === 'void' ? 'purple' : 'toad';
     }
     update(hi, s, time);
   }
