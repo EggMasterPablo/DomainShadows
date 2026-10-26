@@ -1,0 +1,348 @@
+# JUJUTSU TRIALS
+
+## Complete Gameplay and Controls Guide
+
+### 1. THE OBJECTIVE
+
+Jujutsu Trials is a Jujutsu Kaisen-inspired VR survival game. Your objective is to survive increasingly difficult waves of curses using cursed energy, hand-sign techniques, shikigami summons, and Reverse Cursed Technique.
+
+Defeating curses earns you score. As waves progress, enemies become more dangerous. Your health and cursed energy are limited, so you must decide when to attack, summon shikigami, activate your domain, or recover using Reverse Cursed Technique.
+
+Your run ends when your health reaches zero. After defeat, the game displays the domain-selection instruction again so you can choose a domain for your next run without intentionally leaving VR.
+
+### 2. STARTING A RUN
+
+1. Open the game in a browser that supports WebXR.
+2. Press the Enter VR button and put on your headset.
+3. Once VR starts, the game displays: SELECT DOMAIN TO START.
+4. Perform the hand sign corresponding to the domain you want.
+5. Keep the gesture steady until the game recognises it.
+6. Once the selection succeeds, the instruction disappears and the run begins.
+
+You select your domain through its hand sign, not by pointing at a menu button.
+
+You choose one domain for each run. You cannot activate a different domain during that run, although you can return to the normal environment when your active domain collapses.
+
+After defeat, you can select a different domain for the next attempt.
+
+### 3. THE FOUR DOMAIN EXPANSIONS
+
+UNLIMITED VOID
+
+* Associated with Satoru Gojo.
+* Recognised through the crossed index-and-middle-finger gesture.
+* Its environment uses a pale, high-contrast visual style.
+* Its domain effect damages and interferes with curses.
+* Keep the fingers crossed and raised steadily for recognition.
+
+MALEVOLENT SHRINE
+
+* Associated with Ryomen Sukuna.
+* Recognised through two raised peace-sign-like gestures held close together.
+* Its environment uses a red visual theme.
+* It specialises in sustained slashing damage against curses.
+* Bring both hands close enough for the two-hand gesture to register.
+
+COFFIN OF THE IRON MOUNTAIN
+
+* Associated with Jogo.
+* Recognised by bringing both open hands together, with the middle fingertips close to one another.
+* Its environment uses a volcanic, fiery visual theme.
+* Its domain deals continuous heat damage.
+* The fingertips need to be close together, not merely the palms facing one another from a distance.
+
+CHIMERA SHADOW GARDEN
+
+* Associated with Megumi Fushiguro.
+* Recognised by bringing both fists together.
+* Its environment uses a dark, shadow-themed visual style.
+* It deals domain damage and provides a major boost to shikigami damage while active.
+* Keep both fists close together for the gesture to register.
+
+IMPORTANT: Hand-sign recognition is an approximation based on tracked finger joints. Real hand positions, tracking quality, lighting, and headset performance can affect recognition.
+
+### 4. CURSED ENERGY
+
+Cursed energy, abbreviated CE, powers your techniques.
+
+The HUD displays your current CE as a blue bar.
+
+Your maximum cursed energy is 100.
+
+Outside an active domain:
+
+* CE regenerates at 2.8 points per second.
+* Regeneration stops at the maximum of 100.
+
+While a domain is active:
+
+* CE drains at 7.5 points per second.
+* If your CE reaches zero, the domain collapses and the game returns to the normal environment.
+
+Activating a domain also costs CE. The activation cost depends on the selected domain:
+
+* Unlimited Void: 40 CE.
+* Malevolent Shrine: 44 CE.
+* Coffin of the Iron Mountain: 35 CE.
+* Chimera Shadow Garden: 40 CE.
+
+Domain activation has a 14-second cooldown. A separate gesture lockout also helps prevent accidental repeated activations.
+
+Because domains consume energy quickly, use them strategically. Activating a domain when there are no nearby enemies may waste part of its duration.
+
+### 5. REVERSE CURSED TECHNIQUE
+
+Reverse Cursed Technique, abbreviated RCT, uses cursed energy to restore your health.
+
+HOW TO ACTIVATE IT:
+
+1. Raise both hands.
+2. Make a thumbs-up gesture with each hand.
+3. Bring your hands reasonably close together.
+4. Maintain the gestures while you have missing health and available CE.
+
+RCT only works when:
+
+* Both hands are recognised as thumbs-up gestures.
+* Your health is below its maximum.
+* You have cursed energy remaining.
+* Its cooldown has finished.
+
+RCT consumes 14 CE per second while active and restores approximately 8 health per second when sufficient CE is available.
+
+RCT has a 5-second cooldown after it stops being active.
+
+If your CE runs out, RCT cannot continue healing. If you are already at full health, there is no reason to activate it.
+
+TIP: If RCT does not activate, check that both thumbs are clearly extended, your other fingers are curled, your hands are visible to the headset, and your hands are not too far apart.
+
+### 6. SHIKIGAMI SUMMONING
+
+Shikigami are summoned allies that fight curses for you. Each summon costs CE and has its own cooldown.
+
+DIVINE DOGS
+
+* Desktop test key: 1.
+* CE cost: 18.
+* Cooldown: 8 seconds.
+* Summons two wolves.
+* The wolves attack curses and disappear after their lifetime expires.
+
+NUE
+
+* Desktop test key: 2.
+* CE cost: 24.
+* Cooldown: 10 seconds.
+* Summons a flying bird-like shikigami.
+* Nue attacks curses while moving around the battlefield.
+
+MAX: TOAD
+
+* Desktop test key: 3.
+* CE cost: 22.
+* Cooldown: 9 seconds.
+* Summons a toad-like shikigami to help fight nearby curses.
+
+DIVINE GENERAL MAHORAGA
+
+* Desktop test key: 4.
+* CE cost: 62.
+* Cooldown: 24 seconds.
+* Summons a large, powerful shikigami.
+* Its high cost and long cooldown mean it should be used thoughtfully.
+
+Shikigami cannot be summoned if you lack the required CE or if that summon is still on cooldown.
+
+Chimera Shadow Garden triples shikigami damage while that domain is active.
+
+### 7. HAND-SIGN CONTROLS
+
+The game uses the headset's hand-tracking system to estimate which fingers are extended and which are curled.
+
+The main gestures are:
+
+* Crossed index and middle fingers: Unlimited Void.
+* Two raised peace signs held together: Malevolent Shrine.
+* Two open hands with the middle fingertips close together: Coffin of the Iron Mountain.
+* Two fists held together: Chimera Shadow Garden.
+* One raised pointing finger: Divine Dogs.
+* One raised peace sign: Nue.
+* One raised three-finger gesture: Max Toad.
+* Two raised three-finger gestures held together: Mahoraga.
+* One raised open hand: Return to the normal environment.
+* Two thumbs-up gestures held together: Reverse Cursed Technique.
+
+The game waits for a gesture to remain stable before activating it. The latest update reduces the hold time for most gestures to roughly 0.6–0.85 seconds.
+
+Release the gesture before trying to activate it again. This helps prevent a single continuous hand pose from repeatedly triggering an ability.
+
+Some gestures are similar, so make the intended pose clearly. In particular, keep the crossed-finger Unlimited Void gesture distinct from the ordinary peace sign used for Nue.
+
+### 8. PUNCHING AND BLACK FLASH
+
+You can attack by punching toward a curse while your hand is tracked.
+
+The game estimates hand speed from the movement of your wrist. A sufficiently fast punch made with a closed fist can hit a nearby curse.
+
+Punches have a short cooldown to prevent the same hand from registering too many hits in quick succession.
+
+Successful attacks build a combo. When the game triggers Black Flash:
+
+* The curse receives substantially more damage than from an ordinary punch.
+* You receive a small amount of CE back.
+* A special visual effect appears.
+* A Black Flash message is displayed.
+
+Black Flash is chance-based, and its probability improves with your combo. It is not guaranteed on every punch.
+
+### 9. THE HUD
+
+The HUD is the in-game information display.
+
+HP BAR
+
+* Displays your current health.
+* The bar becomes depleted as curses damage you.
+* If health reaches zero, the run ends.
+
+CE BAR
+
+* Displays your current cursed energy.
+* Summons and domain activation consume CE.
+* Active domains drain CE over time.
+* RCT consumes CE while healing.
+
+WAVE
+
+* Shows the current wave of curses.
+* Later waves become more difficult.
+
+SCORE
+
+* Tracks your score for the current run.
+
+BEST
+
+* Displays the best score saved by the game in browser storage.
+
+STATUS MESSAGE
+
+* Displays recent events, including successful summons, domain activation, cooldown messages, and other gameplay information.
+
+COOLDOWNS
+
+* The HUD shows the remaining cooldowns for Divine Dogs, Nue, Toad, Mahoraga, domain activation, and RCT.
+* A cooldown must finish before the associated ability can be used again.
+
+HAND-TRACKING DEBUG TEXT
+
+* When debugging is enabled, the HUD also displays the gestures detected for the left and right hands.
+* This can help identify why a hand sign is not being recognised.
+
+The latest update enables depth testing for the HUD. This allows tracked hands to appear in front of the HUD when the headset's depth rendering supports it. Depending on the browser and headset, some overlap may still occur.
+
+### 10. CURSES AND WAVES
+
+Curses spawn around the player and move toward them.
+
+The game uses different curse types, including enemies associated with slashing, ranged attacks, and poison effects.
+
+Some enemies are larger and have substantially more health than ordinary curses.
+
+As the wave count increases:
+
+* Enemy health increases.
+* Enemy movement speed increases.
+* Survival becomes more difficult.
+
+Shikigami and punches can reduce enemy health. Domain effects can damage curses continuously while the domain is active.
+
+Keep moving, use summons to maintain pressure, and pay attention to your health and CE.
+
+### 11. DOMAIN ACTIVATION DURING A RUN
+
+Once a domain has been selected, its matching sign activates that domain during the run.
+
+The selected domain is the only domain you can activate for that run.
+
+Activating a domain:
+
+1. Checks that the chosen domain matches your selection.
+2. Checks the domain cooldown.
+3. Checks that you have enough CE.
+4. Deducts the activation cost.
+5. Begins the domain transition.
+6. Applies the new environment and its effects.
+
+If you do not have enough CE, the game displays a message. If the domain is cooling down, the remaining cooldown is shown.
+
+When the domain drains your CE to zero, it collapses and the normal environment returns.
+
+### 12. DESKTOP TEST CONTROLS
+
+The game is primarily designed for VR hand tracking, but it includes several keyboard shortcuts for testing:
+
+* 1: Divine Dogs.
+* 2: Nue.
+* 3: Max Toad.
+* 4: Mahoraga.
+* V: Unlimited Void.
+* S: Malevolent Shrine.
+* C: Coffin of the Iron Mountain.
+* H: Chimera Shadow Garden.
+* N: Return to the normal environment.
+* Space: Test a punch against a nearby curse.
+
+These keyboard shortcuts are intended for testing and are not a replacement for the VR hand-sign system.
+
+### 13. TROUBLESHOOTING
+
+IF A DOMAIN DOES NOT ACTIVATE:
+
+* Make sure you selected that domain at the beginning of the run.
+* Hold the correct gesture steadily.
+* Keep both hands visible if the gesture needs two hands.
+* Check that the domain cooldown has finished.
+* Make sure you have enough CE.
+* Avoid changing the gesture halfway through recognition.
+
+IF RCT DOES NOT ACTIVATE:
+
+* Extend both thumbs clearly.
+* Curl the other fingers.
+* Bring your hands closer together.
+* Make sure your health is below 100.
+* Check that you have CE and that RCT is not cooling down.
+
+IF A SHIKIGAMI DOES NOT APPEAR:
+
+* Check the CE bar.
+* Check that its cooldown has finished.
+* Make sure your hand sign is being recognised.
+
+IF THE HUD OVERLAPS YOUR HANDS:
+
+* Check whether your browser supports WebXR hand tracking correctly.
+* Confirm that both hands are visible to the headset.
+* Remember that depth ordering can vary with the headset and browser's rendering implementation.
+
+IF HAND SIGNS ARE UNRELIABLE:
+
+* Improve the visibility of your hands.
+* Avoid moving the fingers too quickly.
+* Make the intended pose more distinct.
+* Test each gesture separately before combining it with other actions.
+
+### 14. SURVIVAL STRATEGY
+
+* Save CE for situations where summons or a domain will make a real difference.
+* Use Divine Dogs for a relatively inexpensive source of additional damage.
+* Save Mahoraga for difficult situations because it has the highest summon cost.
+* Use RCT when you have lost health, but keep enough CE available for other abilities.
+* Do not activate a domain immediately before a wave ends unless you expect to benefit from its effects.
+* Use punches to maintain pressure while abilities cool down.
+* Watch both the HP and CE bars. Running out of either your health or your ability resources can put the run at risk.
+
+### FINAL NOTE
+
+The game uses estimated hand poses rather than perfect recognition of anime hand signs. The gestures are designed to be playable, not to reproduce every canonical finger position exactly. If a gesture behaves inconsistently on your headset, the gesture thresholds may need further adjustment.
