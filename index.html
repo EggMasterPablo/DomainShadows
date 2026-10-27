@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-<!-- Version: 0.7.0 Beta | Visual cooldowns, ready indicators, clearer targeting/status, persistent comfort settings, and combat feedback polish. -->
+<!-- Version: 0.7.2 Beta | Cooldown timing, cooldown HUD, vow modifiers, and fresh-run cooldown reset fixes. -->
 <meta charset="utf-8">
-<meta name="game-version" content="0.7.0">
+<meta name="game-version" content="0.7.2">
 <meta name="release-channel" content="Beta">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Domain Expansion: Jujutsu Trials v0.7.0 Beta — Quest QoL Edition</title>
+<title>Domain Expansion: Jujutsu Trials v0.7.2 Beta — Combat & Menu Fixes</title>
 <style>
 body{margin:0;background:#000;font-family:system-ui,Arial,sans-serif}
 #domain-menu{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:radial-gradient(ellipse at center,#17172a 0%,#050509 72%);color:#fff;text-align:center}
@@ -60,7 +60,7 @@ const SHRINE_D = 0.44, COFFIN_D = 0.38, COFFIN_T = 0.12, SHADOW_D = 0.32, GRACE 
 const HOLD = { void: 720, shrine: 780, coffin: 760, shadow: 760, todo: 760, hakari: 760, normal: 650, dogs: 600, nue: 650, toad: 620, mahoraga: 500, blue: 550, red: 650, purple: 850, dismantle: 500, cleave: 600, firearrow: 800, embers: 500, flameburst: 650, meteor: 850, playfulcloud: 550 };
 const COST = { dogs: 18, nue: 24, toad: 22, mahoraga: 62, blue: 18, red: 24, purple: 55, dismantle: 12, cleave: 20, firearrow: 30, embers: 14, flameburst: 23, meteor: 48, playfulcloud: 16, doors: 14, rush: 20, shoulder: 18 };
 const SUMMON_COOLDOWN = { dogs: 8, nue: 10, toad: 9, mahoraga: 24, blue: 4.5, red: 6.5, purple: 20, dismantle: 1.6, cleave: 3.8, firearrow: 9, embers: 4.2, flameburst: 6.5, meteor: 18, playfulcloud: 4.5 };
-const DOMAIN_COOLDOWN = 14, PUNCH_COOLDOWN = 0.65;
+const DOMAIN_COOLDOWN = 14, PUNCH_COOLDOWN = 0.42;
 const HAKARI_COST = { doors: 14, rush: 20, shoulder: 18 };
 const HAKARI_CD = { doors: 5, rush: 4, shoulder: 6 };
 let hakariFeverUntil = 0, hakariLastMove = {}; 
@@ -258,6 +258,10 @@ function chooseDomainInVR(name) {
   // Starting a run starts every technique cooldown fresh and clears any held-button edge state.
   for (const key of Object.keys(lastSummon)) delete lastSummon[key];
   for (const key of Object.keys(activatedAt)) delete activatedAt[key];
+  hakariLastMove = {};
+  lastBoogie = 0;
+  domainReadyAt = 0;
+  if (typeof punchCd !== 'undefined') punchCd.fill(0);
   lastDomainActivation = -Infinity;
   resetQuestInputState();
   runUpgrades=[]; runStats={startedAt:performance.now(),kills:0,damageDealt:0,damageTaken:0,bosses:0,techniques:0,blackFlashes:0,bestCombo:0}; lastMeasuredHp=G.hp; floorDamageTaken=0; endlessMode=endlessArmed; endlessArmed=false; activeVows.splice(0,activeVows.length,...activeVows.filter(id=>PERMANENT_VOWS.some(v=>v.id===id)));
@@ -310,41 +314,49 @@ renderer.xr.addEventListener('sessionend', () => { resetQuestInputState(); gameS
 // Floating in-VR domain picker: aim a controller at a card and press its trigger.
 // In-VR instruction only: select the domain by holding its hand sign.
 let vrMenuMessage = 'SELECT DOMAIN TO START';
+let controllerMenuState = '', controllerMenuIndex = 0, controllerMenuMoveAt = 0, controllerMenuActionAt = 0;
 const vrDomainGroup = new THREE.Group(); vrDomainGroup.name = 'InVRDomainInstruction';
 vrDomainGroup.position.set(0, 0, -1.9); camera.add(vrDomainGroup); vrDomainGroup.visible = false;
 function makeInstructionTexture(message) {
-  const c = document.createElement('canvas'); c.width = 1024; c.height = 530;
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 700;
   const x = c.getContext('2d');
-  x.fillStyle = 'rgba(7,9,19,.94)'; x.fillRect(0,0,c.width,c.height);
-  x.strokeStyle = '#a5b4fc'; x.lineWidth = 8; x.strokeRect(5,5,c.width-10,c.height-10);
-  x.textAlign = 'center'; x.fillStyle = '#fff'; x.font = 'bold 54px sans-serif';
-  const lines = message.split('\n');
-  lines.forEach((line,i) => { x.fillText(line,512,100+i*68,980); });
-  x.fillStyle = '#cdd5f7'; x.font = '27px sans-serif';
-  if (modeSettingsOpen) {
-    x.fillText('Settings only work before a run',512,260); x.fillText('Point: effects '+(effectsEnabled?'ON':'OFF')+' · Peace: HUD '+(hudEnabled?'ON':'OFF'),512,310); x.fillText('Three fingers: sensitivity '+(gestureSensitivity===.75?'EASY':gestureSensitivity===1.25?'STRICT':'NORMAL'),512,340); x.fillText('Thumbs-up or M returns to mode selection',512,360);
-  } else if (awaitingModePick) {
-    x.fillText('Choose your mode before the vow and domain menus',512,260); x.fillText('Thumbs-up: Training · Point: Student',512,310); x.fillText('Peace: Sorcerer · Three fingers: Special Grade',512,360);
-    if(endlessUnlocked) x.fillText('Two peace signs together: Endless Mode',512,410);
-    x.fillText('Put both open hands together to open settings',512,460);
-    x.fillText('CONTROLLERS: left stick browse · either trigger confirm',512,500);
-  } else if (awaitingVowPick) {
-    const opts = vowChoices.length ? vowChoices : (prepareVowChoices(), vowChoices);
-    opts.forEach((v,i) => { const y=245+i*72; x.fillStyle=['#ff8a80','#80d8ff','#d7a7ff'][i]; x.fillText((i+1)+'. '+v.name,512,y); x.fillStyle='#e4e7ff'; x.font='23px sans-serif'; x.fillText(v.desc,512,y+30); x.font='27px sans-serif'; });
-    x.fillText('Point = 1  ·  Peace sign = 2  ·  Three fingers = 3',512,485);
-    x.fillText(vowPickMode==='permanent' ? 'FIRST CLEAR REWARD · PERMANENT & IRREPLACEABLE' : vowPickMode==='upgrade' ? 'CHOOSE ONE · RUN-UPGRADES CAN SYNERGIZE' : 'Duplicate vow types stack; drawbacks do not stack',512,518);
-  } else {
-    x.fillText('Unlimited Void: one raised thumbs-up',512,260);
-    x.fillText('Malevolent Shrine: two peace signs together',512,300);
-    x.fillText('Iron Mountain: both open palms side-by-side',512,340);
-    x.fillText('Shadow Garden: two fists together',512,380);
-    x.fillText('Mahoraga: bring both open palms close together',512,410);
-    x.fillText('Todo: one raised three-finger sign',512,420);
-    x.fillText('Hakari: one raised peace sign (V)',512,450);
-    x.fillText('Hold the chosen sign steady until it locks in',512,490);
-    x.fillText('QUEST CONTROLS: sticks move/turn · triggers use hand-specific moves',512,515);
-    x.fillStyle='#cdd5f7';x.font='20px sans-serif';x.fillText(awaitingModePick?(modeSettingsOpen?'Desktop: F4 Effects · F5 HUD · F6 Sensitivity · M Back':'Desktop: 1 Training · 2 Student · 3 Sorcerer · 4 Special'+(endlessUnlocked?' · 5 Endless':'')):'Hold the chosen sign steady until it locks in',512,520);
-  }
+  const roundRect=(ctx,px,py,w,h,r)=>{ctx.beginPath();ctx.roundRect(px,py,w,h,r);};
+  const grad=x.createLinearGradient(0,0,1024,700);grad.addColorStop(0,'rgba(10,15,35,.98)');grad.addColorStop(1,'rgba(18,7,29,.97)');
+  x.fillStyle=grad;x.fillRect(0,0,c.width,c.height);
+  x.strokeStyle='#8798ff';x.lineWidth=5;roundRect(x,7,7,1010,686,24);x.stroke();
+  const lines=message.split('\n');
+  x.textAlign='center';x.fillStyle='#fff';x.font='bold 39px sans-serif';x.fillText((lines[0]||'JUJUTSU TRIALS').slice(0,42),512,62,950);
+  x.font='20px sans-serif';x.fillStyle='#b9c5ee';
+  const subtitle=lines.slice(1).find(v=>v.trim()&&!v.startsWith('CONTROLLER:')&&!v.startsWith('Left stick:'))||'';
+  if(subtitle) x.fillText(subtitle.slice(0,78),512,96,950);
+  const colors=['#ff8b8b','#84d8ff','#d5a2ff','#9dffbf','#ffd780','#8ef0e1'];
+  let opts=[],key='';
+  if(awaitingModePick){key=modeSettingsOpen?'settings':'mode';opts=modeSettingsOpen?[['effects','Visual Effects',effectsEnabled?'Effects ON':'Effects OFF'],['hud','Combat HUD',hudEnabled?'HUD ON':'HUD OFF'],['sensitivity','Gesture Sensitivity',(gestureSensitivity===.75?'EASY':gestureSensitivity===1.25?'STRICT':'NORMAL')],['back','Back','Return to mode selection']]:[['training','Training Room','Practice without waves'],['student','Student','Lower difficulty'],['sorcerer','Sorcerer','Standard difficulty'],['special','Special Grade','Harder encounters'],...(endlessUnlocked?[['endless','Endless Mode','Keep fighting after the main clear']]:[])];}
+  else if(awaitingVowPick){key='vow';opts=(vowChoices.length?vowChoices:(prepareVowChoices(),vowChoices)).slice(0,3).map((v,i)=>[String(i),v.name,v.desc]);}
+  else if(awaitingDomainPick){key='domain';opts=[['void','Unlimited Void','Control and continuous damage'],['shrine','Malevolent Shrine','Powerful slashing damage'],['coffin','Coffin of the Iron Mountain','Volcanic area damage'],['shadow','Chimera Shadow Garden','Empowered shikigami'],['todo','Aoi Todo','Close-range combat and Boogie Woogie'],['hakari','Kinji Hakari','Fast attacks and Idle Death Gamble']];}
+  const idx=(typeof controllerMenuIndex==='number'?controllerMenuIndex:0);
+  const cols=opts.length>4?3:Math.max(1,Math.min(3,opts.length));
+  const rows=Math.ceil(opts.length/cols), top=key==='domain'?128:key==='vow'?145:135;
+  const gap=13, cardW=(920-gap*(cols-1))/cols, cardH=Math.min(key==='vow'?120:145, (480-gap*(rows-1))/Math.max(1,rows));
+  opts.forEach((o,i)=>{
+    const col=i%cols,row=Math.floor(i/cols),px=52+col*(cardW+gap),py=top+row*(cardH+gap),selected=(idx===i);
+    x.fillStyle=selected?'rgba(69,83,153,.98)':'rgba(23,29,54,.96)';roundRect(x,px,py,cardW,cardH,17);x.fill();
+    x.strokeStyle=selected?'#ffffff':colors[i%colors.length];x.lineWidth=selected?5:2;roundRect(x,px,py,cardW,cardH,17);x.stroke();
+    x.textAlign='left';x.fillStyle=colors[i%colors.length];x.font='bold 18px sans-serif';x.fillText(String(i+1).padStart(2,'0'),px+15,py+27);
+    x.fillStyle='#fff';x.font='bold 22px sans-serif';x.fillText(o[1].slice(0,30),px+53,py+29,cardW-66);
+    x.fillStyle='#d1d8f4';x.font='17px sans-serif';
+    const words=(o[2]||'').split(' ');let line='',yy=py+58,limit=cardW-28;
+    for(const word of words){const test=line?line+' '+word:word;if(x.measureText(test).width>limit&&line){x.fillText(line,px+14,yy);line=word;yy+=22;if(yy>py+cardH-12)break;}else line=test;}
+    if(line&&yy<=py+cardH-8)x.fillText(line,px+14,yy);
+    if(selected){x.fillStyle='#b7ffc9';x.font='bold 14px sans-serif';x.fillText('SELECTED',px+cardW-92,py+cardH-13);}
+  });
+  const footerY=652;
+  x.textAlign='center';x.fillStyle='#dbe2ff';x.font='bold 19px sans-serif';
+  if(renderer?.xr?.isPresenting) x.fillText('LEFT STICK: BROWSE   •   TRIGGER: CONFIRM   •   USE HAND SIGNS TO SELECT',512,footerY,960);
+  else x.fillText('Use the matching hand sign in VR or keyboard shortcuts on desktop',512,footerY,960);
+  x.font='16px sans-serif';x.fillStyle='#9eabd7';
+  const detail=key==='mode'?'Training: thumbs-up · Student: point · Sorcerer: peace sign · Special Grade: three fingers':key==='vow'?'Choose one card; the selected vow changes your run':key==='domain'?'Choose the character/domain that matches your preferred moveset':key==='settings'?'Settings are saved when browser storage is available':'Keep your selection steady until it confirms';
+  x.fillText(detail,512,679,960);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const vrInstruction = new THREE.Mesh(
@@ -1413,14 +1425,14 @@ function strike(c, sp) {
     fxRing(p,0xffffff,3.4,.42,true); fxRing(p,0xff0030,2.7,.56,false);
     for (let i = 0; i < 11; i++) fxLine(p, p.clone().add(new THREE.Vector3(rand(-1, 1), rand(-.65, 1), rand(-1, 1)).normalize().multiplyScalar(rand(1.8,3.1))), i % 3 ? 0xff0030 : 0xffffff, .42, .045);
     say('⚡ BLACK FLASH x' + G.combo + ' ⚡', 1.8); A.tone(42, 'sine', .95, 1, 18); A.tone(95, 'sawtooth', .3, .55, 55); A.noise(.55, .85, 8000, 220, 'highpass');
-  } else { hurt(c, 14 + Math.min(sp, 6) * 2); fxBall(p, 0xffffff, .5, .15); A.tone(180, 'square', .07, .12, 90); }
+  } else { hurt(c, 24 + Math.min(sp, 8) * 3); fxBall(p, 0xffffff, .75, .2); fxRing(p,0xe7f2ff,.7,.2,true); A.tone(145, 'square', .09, .16, 75); }
 }
 
 /* ---------- TEN SHADOWS: summoning ---------- */
 const lastSummon = {};
 function summon(kind) {
   const now = performance.now();
-  const wait = (lastSummon[kind] || 0) + (SUMMON_COOLDOWN[kind] || 8) * 1000 * vowCooldownMult() - now;
+  const wait = lastSummon[kind] == null ? 0 : lastSummon[kind] + (SUMMON_COOLDOWN[kind] || 8) * 1000 * vowCooldownMult() - now;
   if (wait > 0) { say(kind.toUpperCase() + ' cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
   if (G.ce < COST[kind]) { say('Not enough cursed energy'); return; }
   lastSummon[kind] = now; G.ce -= COST[kind] * vowCeCostMult();
@@ -1484,7 +1496,7 @@ function useTechnique(kind) {
   if ((chosenDomain === 'shrine' || chosenDomain === 'sukuna') && !['dismantle','cleave','firearrow'].includes(kind)) return;
   if (chosenDomain === 'coffin' && !['embers','flameburst','meteor'].includes(kind)) return;
   if (chosenDomain === 'todo' && kind !== 'playfulcloud') return;
-  const now = performance.now(), wait = (lastSummon[kind] || 0) + (SUMMON_COOLDOWN[kind] || 3) * 1000 * vowCooldownMult() - now;
+  const now = performance.now(), wait = lastSummon[kind] == null ? 0 : lastSummon[kind] + (SUMMON_COOLDOWN[kind] || 3) * 1000 * vowCooldownMult() - now;
   if (wait > 0) { say(kind.toUpperCase() + ' cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
   if (G.ce < COST[kind]) { say('Not enough cursed energy'); return; }
   lastSummon[kind] = now; G.ce -= COST[kind] * vowCeCostMult();
@@ -1641,7 +1653,7 @@ function useTechnique(kind) {
 let lastBoogie = 0;
 function boogieWoogie() {
   if (chosenDomain !== 'todo' || !gameStarted) return;
-  const now = performance.now(), wait = lastBoogie + 5200 - now;
+  const now = performance.now(), wait = lastBoogie == null || lastBoogie === 0 ? 0 : lastBoogie + 5200 * vowCooldownMult() - now;
   if (wait > 0) { say('BOOGIE WOOGIE cooldown: ' + (wait / 1000).toFixed(1) + 's'); return; }
   if (G.ce < 20) { say('Not enough cursed energy for Boogie Woogie'); return; }
   lastBoogie = now; G.ce -= 20 * vowCeCostMult();
@@ -1683,7 +1695,7 @@ function hakariMove(kind) {
     else {say(roll<.35?'NEAR JACKPOT!':'NO JACKPOT — TRY AGAIN'); if(roll<.35)G.ce=Math.min(vowCeMax(),G.ce+12);}
     return;
   }
-  const wait=(hakariLastMove[kind]||0)+(HAKARI_CD[kind]||4)*1000-now;if(wait>0){say(kind.toUpperCase()+' cooldown '+(wait/1000).toFixed(1)+'s');return;}
+  const wait=hakariLastMove[kind] == null ? 0 : hakariLastMove[kind]+(HAKARI_CD[kind]||4)*1000*vowCooldownMult()-now;if(wait>0){say(kind.toUpperCase()+' cooldown '+(wait/1000).toFixed(1)+'s');return;}
   const cost=HAKARI_COST[kind]||0;if(G.ce<cost){say('Not enough cursed energy');return;}hakariLastMove[kind]=now;G.ce-=cost;
   if(kind==='doors'){
     // Choose the closest living enemy in Hakari's forward lane and place the doors at its actual distance.
@@ -1778,8 +1790,6 @@ function resetQuestInputState(){
   for(const side of ['left','right']) for(const key of Object.keys(questInputState[side])) questInputState[side][key]=false;
   controllerMenuState=''; controllerMenuIndex=0; controllerMenuMoveAt=0; controllerMenuActionAt=0;
 }
-let controllerMenuState = '', controllerMenuIndex = 0, controllerMenuMoveAt = 0;
-let controllerMenuActionAt = 0;
 const controllerMoveSets = {
   left:  { void:'blue', shrine:'dismantle', sukuna:'dismantle', coffin:'embers', shadow:'dogs', hakari:'playfulcloud', todo:'playfulcloud' },
   right: { void:'red', shrine:'cleave', sukuna:'cleave', coffin:'flameburst', shadow:'nue', hakari:'blue', todo:'boogie' },
@@ -1857,12 +1867,12 @@ function controllerPunch(side){
   const item=xrControllerObjects[side==='left'?0:1];
   if(!item?.grip) return;
   const pos=new THREE.Vector3(); item.grip.getWorldPosition(pos);
-  const target=nearest(pos,1.55);
-  if(target){strike(target,4.5);return;}
-  // Small reach assist for the offset between the controller grip model and the actual fist.
-  const forward=new THREE.Vector3(); item.grip.getWorldDirection(forward); forward.multiplyScalar(-1);
-  const assisted=pos.addScaledVector(forward,.45);
-  const next=nearest(assisted,1.15); if(next) strike(next,4.5);
+  // Controller grip anchors sit behind the virtual fist, so use a generous but close-range reach.
+  const target=nearest(pos,1.9);
+  if(target){strike(target,6.5);return;}
+  const forward=new THREE.Vector3(); item.grip.getWorldDirection(forward).multiplyScalar(-1);
+  const assisted=pos.clone().addScaledVector(forward,.7);
+  const next=nearest(assisted,1.65); if(next) strike(next,6.5);
 }
 function updateQuestControllerInput(dt, time){
   const session=renderer.xr.getSession(); if(!session) return;
@@ -1882,7 +1892,7 @@ function updateQuestControllerInput(dt, time){
     right:{trigger:read(rightPad,0),grip:read(rightPad,1),stickClick:read(rightPad,(rightPad?.buttons?.length||0)>=6?3:2),primary:read(rightPad,(rightPad?.buttons?.length||0)>=6?4:3),secondary:read(rightPad,(rightPad?.buttons?.length||0)>=6?5:4)}
   };
   const menuKey=controllerMenuKey();
-  if(menuKey!==controllerMenuState){controllerMenuState=menuKey;controllerMenuIndex=0;}
+  if(menuKey!==controllerMenuState){controllerMenuState=menuKey;controllerMenuIndex=0;refreshControllerMenu();}
   // Left stick browses every in-VR menu; trigger confirms the highlighted choice.
   if(menuKey!=='play'){
     const x=leftAxes[0]||0;
@@ -2083,7 +2093,7 @@ function gameStep(dt, info, wd) {
     if (!w) { prevW[hi] = null; continue; }
     const sp = prevW[hi] ? w.distanceTo(prevW[hi]) / Math.max(dt, .001) : 0;
     prevW[hi] = prevW[hi] || new THREE.Vector3(); prevW[hi].copy(w);
-    if (info[hi].pose === 'fist' && sp > 2 && punchCd[hi] <= 0) { const c = nearest(w, .55); if (c) { punchCd[hi] = PUNCH_COOLDOWN; strike(c, sp); } }
+    if (info[hi].pose === 'fist' && sp > 1.05 && punchCd[hi] <= 0) { const c = nearest(w, 1.2); if (c) { punchCd[hi] = PUNCH_COOLDOWN * vowCooldownMult(); strike(c, Math.max(sp,2.5)); } }
   }
   // curses: drift to the player, domain damage, stun
   const dd = { void: 14, shrine: 30, coffin: 22, shadow: 14 }[envName] || 0;
@@ -2178,13 +2188,13 @@ function gameStep(dt, info, wd) {
     s.g.rotation.x=Math.sin(t*2.1+(s.ang||0))*.025-attackPose*.12;
     s.g.rotation.z=Math.sin(t*2.8+(s.ang||0))*.025+attackPose*(s.kind==='dogs'?.18:s.kind==='mahoraga'?.12:.06);
     if(s.tongue)s.tongue.scale.y=1+(s.tongueT>0?Math.sin((1-s.tongueT/.32)*Math.PI)*1.7:0);
-    for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(sp) < 1.4) {
-      if (s.kind === 'mahoraga') { G.adapt[c.type] = Math.min(5, G.adapt[c.type] + .3 * dt); s.hp -= 8 * dt / (1 + G.adapt[c.type]) * (c.big ? 2 : 1); }
-      else s.hp -= 8 * dt * (c.big ? 2 : 1);
+    for (const c of curses) if (c.hp > 0 && c.g.position.distanceTo(sp) < 1.15) {
+      s.contactCd=s.contactCd||new Map(); const until=s.contactCd.get(c)||0;
+      if(performance.now()>=until){s.contactCd.set(c,performance.now()+650);if(s.kind==='mahoraga'){G.adapt[c.type]=Math.min(5,G.adapt[c.type]+.3);s.hp-=4*(c.big?2:1);}else s.hp-=4*(c.big?2:1);}
     }
     const walk = (tp, stop) => {
       const dir = tp.clone().sub(sp); dir.y = 0; const d = dir.length();
-      if (d > .05) { dir.divideScalar(d); if (d > stop) sp.addScaledVector(dir, (s.spd || 3) * dt); s.g.lookAt(sp.x + dir.x, sp.y, sp.z + dir.z); }
+      if (d > .05) { dir.divideScalar(d); if (d > stop) sp.addScaledVector(dir, Math.min(d-stop, (s.spd || 3) * dt)); const targetYaw=Math.atan2(dir.x,dir.z); let delta=((targetYaw-s.g.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI; s.g.rotation.y += THREE.MathUtils.clamp(delta,-dt*5,dt*5); }
       return d;
     };
     if (s.kind === 'dogs') {
@@ -2193,7 +2203,7 @@ function gameStep(dt, info, wd) {
       if(s.g.userData.tail)s.g.userData.tail.rotation.z=Math.sin(t*3.6)*.18;
       if (tg && d < 1 && s.cd <= 0) { s.cd = .5; s.attackT=.24; s.attackDur=.24; hurt(tg, 10 * boost()); fxBall(tg.g.position, 0xffffff, .3, .2); A.tone(300, 'square', .08, .1, 120); }
     } else if (s.kind === 'nue') {
-      s.ang += dt * 1.2; sp.set(pp.x + Math.cos(s.ang) * 2.8, 3 + Math.sin(s.ang * 2) * .3, pp.z + Math.sin(s.ang) * 2.8); s.g.rotation.y = -s.ang;
+      s.ang += dt * .48; const orbitTarget=new THREE.Vector3(pp.x+Math.cos(s.ang)*2.8,3+Math.sin(s.ang*2)*.22,pp.z+Math.sin(s.ang)*2.8); sp.lerp(orbitTarget,1-Math.exp(-dt*2.2)); const faceDir=orbitTarget.clone().sub(sp); if(faceDir.lengthSq()>.01){const yaw=Math.atan2(faceDir.x,faceDir.z);let delta=((yaw-s.g.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;s.g.rotation.y+=THREE.MathUtils.clamp(delta,-dt*3,dt*3);}
       s.wl.rotation.z = Math.sin(t * 14) * .48 - .08 - attackPose*.2; s.wr.rotation.z = -Math.sin(t * 14) * .48 + .08 + attackPose*.2; if(s.g.userData.tail)s.g.userData.tail.rotation.z=Math.sin(t*3)*.16;
       const tg = nearest(sp, 20);
       if (tg && s.cd <= 0) {
@@ -2238,9 +2248,9 @@ function gameStep(dt, info, wd) {
     if (G.score > G.best) { G.best = G.score; try { localStorage.setItem('jjkBest', G.best); } catch (e) {} }
     if (!curses.length && !trainingMode) say('Wave cleared — recover before the next wave', 2);
   }
-  // Between waves, slowly regenerate HP automatically. No manual healing sign or CE cost.
+  // Fully restore health between waves so the next encounter starts cleanly.
   if (!curses.length && gameStarted) {
-    G.hp = Math.min(vowHpMax(), G.hp + (WAVE_HP_REGEN+(runUpgrades.includes('healing_aura')?1.5:0)) * dt);
+    G.hp = vowHpMax();
     G.nextWave -= dt;
     if (G.nextWave <= 0) {
       G.wave++; G.floor = endlessMode ? Math.floor((G.wave - 1) / 9) + 1 : Math.min(8,Math.floor((G.wave - 1) / 9) + 1);
@@ -2300,19 +2310,19 @@ function drawHud(dbg) {
   hx.fillStyle='#fff';hx.font='17px sans-serif'; const words=status.split(' '); let line='', yy=174;
   for(const word of words){const test=line?line+' '+word:word;if(hx.measureText(test).width>365){hx.fillText(line,24,yy);line=word;yy+=23;}else line=test;} if(line)hx.fillText(line,24,yy);
   card(430,122,586,140,'TECHNIQUES · COOLDOWNS','#9dbaff');
-  const now=performance.now(), secLeft=(stamp,duration)=>Math.max(0,((stamp||0)+duration*1000*vowCooldownMult()-now)/1000);
+  const now=performance.now(), cdMult=vowCooldownMult(), secLeft=(stamp,duration)=>stamp==null?0:Math.max(0,(stamp+duration*1000*cdMult-now)/1000);
   let abilityRows=[];
   if(chosenDomain==='void') abilityRows=[['BLUE',secLeft(lastSummon.blue,SUMMON_COOLDOWN.blue)],['RED',secLeft(lastSummon.red,SUMMON_COOLDOWN.red)],['HOLLOW PURPLE',secLeft(lastSummon.purple,SUMMON_COOLDOWN.purple)]];
   else if(chosenDomain==='shrine'||chosenDomain==='sukuna') abilityRows=[['DISMANTLE',secLeft(lastSummon.dismantle,SUMMON_COOLDOWN.dismantle)],['CLEAVE',secLeft(lastSummon.cleave,SUMMON_COOLDOWN.cleave)],['FIRE ARROW',secLeft(lastSummon.firearrow,SUMMON_COOLDOWN.firearrow)]];
   else if(chosenDomain==='coffin') abilityRows=[['EMBER INSECTS',secLeft(lastSummon.embers,SUMMON_COOLDOWN.embers)],['FLAME BURST',secLeft(lastSummon.flameburst,SUMMON_COOLDOWN.flameburst)],['MAXIMUM METEOR',secLeft(lastSummon.meteor,SUMMON_COOLDOWN.meteor)]];
   else if(chosenDomain==='shadow') abilityRows=[['DIVINE DOGS',secLeft(lastSummon.dogs,SUMMON_COOLDOWN.dogs)],['NUE',secLeft(lastSummon.nue,SUMMON_COOLDOWN.nue)],['TOAD',secLeft(lastSummon.toad,SUMMON_COOLDOWN.toad)],['MAHORAGA',secLeft(lastSummon.mahoraga,SUMMON_COOLDOWN.mahoraga)]];
-  else if(chosenDomain==='todo') abilityRows=[['COMBO',0],['BOOGIE WOOGIE',Math.max(0,(lastBoogie+5200-now)/1000)]];
+  else if(chosenDomain==='todo') abilityRows=[['COMBO',0],['BOOGIE WOOGIE',lastBoogie>0?Math.max(0,(lastBoogie+5200*cdMult-now)/1000):0]];
   else if(chosenDomain==='hakari') abilityRows=[['SLIDING DOORS',secLeft(hakariLastMove.doors,HAKARI_CD.doors)],['RUSH WAVE',secLeft(hakariLastMove.rush,HAKARI_CD.rush)],['SHOCKWAVE',secLeft(hakariLastMove.shoulder,HAKARI_CD.shoulder)]];
   else abilityRows=[['PUNCH',Math.max(0,...punchCd)],['DOMAIN',Math.max(0,(domainReadyAt-now)/1000)]];
   const rowCount=abilityRows.length, rowH=rowCount>3?23:27, startY=153;
   const cooldownMax={'PUNCH':PUNCH_COOLDOWN,'DOMAIN':DOMAIN_COOLDOWN,'BOOGIE WOOGIE':5.2,'SLIDING DOORS':HAKARI_CD.doors,'RUSH WAVE':HAKARI_CD.rush,'SHOCKWAVE':HAKARI_CD.shoulder,'BLUE':SUMMON_COOLDOWN.blue,'RED':SUMMON_COOLDOWN.red,'HOLLOW PURPLE':SUMMON_COOLDOWN.purple,'DISMANTLE':SUMMON_COOLDOWN.dismantle,'CLEAVE':SUMMON_COOLDOWN.cleave,'FIRE ARROW':SUMMON_COOLDOWN.firearrow,'EMBER INSECTS':SUMMON_COOLDOWN.embers,'FLAME BURST':SUMMON_COOLDOWN.flameburst,'MAXIMUM METEOR':SUMMON_COOLDOWN.meteor,'DIVINE DOGS':SUMMON_COOLDOWN.dogs,'NUE':SUMMON_COOLDOWN.nue,'TOAD':SUMMON_COOLDOWN.toad,'MAHORAGA':SUMMON_COOLDOWN.mahoraga};
   abilityRows.forEach((row,i)=>{const y=startY+i*rowH, name=row[0], left=row[1], max=cooldownMax[name]||8;
-    const ready=left<=.04, x=446, bw=365, by=y+5; hx.font='bold 13px sans-serif';hx.fillStyle=ready?'#8dffb0':'#d5ddff';hx.fillText(name,x,y);hx.fillStyle='#202a42';hx.fillRect(x+135,by,bw-135,10);hx.fillStyle=ready?'#46e58b':'#7c8dff';hx.fillRect(x+135,by,(bw-135)*(ready?1:Math.max(0,1-left/max)),10);hx.strokeStyle='rgba(255,255,255,.3)';hx.strokeRect(x+135,by,bw-135,10);hx.textAlign='right';hx.fillStyle=ready?'#8dffb0':'#ffffff';hx.font='bold 12px sans-serif';hx.fillText(ready?'READY':(left.toFixed(1)+'s'),x+565,y);hx.textAlign='left';
+    const effectiveMax=max*cdMult, ready=left<=.04, x=446, bw=365, by=y+5; hx.font='bold 13px sans-serif';hx.fillStyle=ready?'#8dffb0':'#d5ddff';hx.fillText(name,x,y);hx.fillStyle='#202a42';hx.fillRect(x+135,by,bw-135,10);hx.fillStyle=ready?'#46e58b':'#7c8dff';hx.fillRect(x+135,by,(bw-135)*(ready?1:Math.max(0,1-left/effectiveMax)),10);hx.strokeStyle='rgba(255,255,255,.3)';hx.strokeRect(x+135,by,bw-135,10);hx.textAlign='right';hx.fillStyle=ready?'#8dffb0':'#ffffff';hx.font='bold 12px sans-serif';hx.fillText(ready?'READY':(left.toFixed(1)+'s'),x+565,y);hx.textAlign='left';
   });
   const ppos=playerPos(), target=curses.filter(c=>c.hp>0&&!c.trainingDummy).sort((u,v)=>u.g.position.distanceTo(ppos)-v.g.position.distanceTo(ppos))[0];
   hx.fillStyle='#aeeaff';hx.font='bold 12px sans-serif';hx.fillText(target?`NEAREST: ${target.name} · ${ppos.distanceTo(target.g.position).toFixed(1)}m`:'TARGET: NONE NEARBY',446,255);
