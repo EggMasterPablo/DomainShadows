@@ -1,0 +1,49 @@
+JUJUTSU TRIALS
+Version 0.7.0 Beta — Changelog
+================================
+
+Release type: Quality-of-life update
+Previous version: v0.6.3 Beta
+
+NEW AND IMPROVED
+----------------
+
+1. VISUAL COOLDOWNS
+- Added visual cooldown progress indicators for abilities.
+- Abilities that are ready use a clear READY indicator.
+- Abilities that are recharging show their remaining cooldown time.
+
+2. COMBAT HUD
+- Added a target readout for the nearest living curse, including distance.
+- Added a low cursed-energy warning.
+- Retained the health and cursed-energy bars, run information, and active-vow display.
+
+3. HIT FEEDBACK
+- Improved hit reactions to make impacts easier to read.
+- Heavy attacks can briefly interrupt enemies.
+
+4. COMFORT SETTINGS
+- Added saved preferences for visual effects, HUD, and gesture sensitivity.
+- Preferences persist between sessions when browser storage is available.
+
+PRESERVED FEATURES
+------------------
+- Existing characters and abilities.
+- Quest controller support and gesture-matched ability controls.
+- Grip-based melee punches.
+- Black Flash damage and impact improvements from v0.6.2.
+- v0.6.3 run-start and VR input-state reset fixes.
+
+TESTING STATUS
+--------------
+- JavaScript syntax check: passed.
+- Physical testing on Quest 2, Quest 3, and Quest 3S: not yet performed.
+- Full gameplay regression testing: still required.
+
+NOTE
+----
+This changelog records the changes intended for v0.7.0 Beta. Some behavior,
+including HUD readability in VR and the impact of combat changes, still needs
+to be confirmed through gameplay testing.
+
+Next planned milestone: v0.8.0 Beta — VR comfort, menu polish, and performance.
