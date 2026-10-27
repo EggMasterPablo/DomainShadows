@@ -1,0 +1,109 @@
+JUJUTSU TRIALS — FULL CHANGELOG
+================================
+
+This changelog summarizes the changes discussed throughout the game-development conversation. The VR interactions and visual effects still need in-game testing.
+
+1. ORIGINAL GAME AND CORE SYSTEMS
+---------------------------------
+- Built the game as a standalone HTML project using Three.js and WebXR.
+- Added VR hand tracking and gesture-based technique activation.
+- Added cursed energy, health, technique costs, cooldowns, enemy encounters, and combat effects.
+- Included character/domain selection and multiple difficulty modes.
+- Included Training Mode and an option to quit training.
+- Added enemy grades, escalating encounters, and boss fights.
+- Included Gojo, Sukuna, Megumi, Todo, Jogo, and Hakari.
+
+2. HAKARI — MOVES AND DOMAIN
+----------------------------
+Ranged moves:
+- Changed Sliding Doors to adapt its range to the nearest living enemy in Hakari's forward lane.
+- Added a fallback range when no suitable target is found.
+- Added target-lock status and range feedback.
+- Extended Rush into a ranged wave with a reported 14-metre range.
+- Extended Shoulder Charge into a ranged shockwave with a reported 11-metre range.
+
+Move visuals:
+- Improved Sliding Doors with a door frame, glowing panels, and an opening animation.
+- Added layered energy waves and impact effects to Rush.
+- Added an animated 3D shockwave and impact effects to Shoulder Charge.
+
+Domain Expansion:
+- Added a full-scene, neon casino and railway-inspired environment.
+- Added animated jackpot signage, glowing tracks, rotating rings, and floating particles.
+- Connected Hakari's jackpot activation to the domain environment.
+
+Note: The adaptive range logic exists in the source, but whether it selects and hits targets correctly needs in-game testing.
+
+3. TODO — BOOGIE WOOGIE
+-----------------------
+- Replaced the clap gesture with bringing both fists together.
+- Updated gesture instructions and control messages.
+- Kept Boogie Woogie as a separate ability with cursed energy and cooldown checks.
+- Implemented logic for swapping two curses or repositioning a target, depending on the situation.
+
+4. HAND-TRACKING MODELS AND GESTURES
+-----------------------------------
+- Reverted visible hand models to joint spheres only, removing the full skinned-hand appearance.
+- Kept gesture recognition based on tracked finger joints.
+- Added brief casting animations without intentionally changing tracked joint positions.
+- Updated gesture instructions for supported characters and techniques.
+- Changed Mahoraga's summoning gesture to make it easier to perform.
+
+5. GOJO — LIMITLESS
+-------------------
+Hollow Purple:
+- Increased damage from 85 to 140.
+- Increased the hit radius.
+- Increased cursed energy cost from 42 to 55.
+- Increased cooldown from 14 to 20 seconds.
+
+Red and Blue:
+- Swapped gesture mappings:
+  - Pointing activates Red.
+  - A peace sign activates Blue.
+- Added short charge-up animations and growing energy effects before launching the techniques.
+- Updated gesture instructions to match.
+
+6. MEGUMI — MAHORAGA
+--------------------
+- Initially reduced summoning time from 850 ms to 500 ms.
+- Temporarily reduced cursed energy cost from 62 to 42 and cooldown from 24 to 16 seconds.
+- After the correction, restored cost to 62 and cooldown to 24 seconds.
+- Kept the shorter 500 ms summoning time.
+- Replaced the original difficult gesture with bringing both open palms close together.
+- Updated on-screen instructions.
+
+7. DIFFICULTY AND PERFORMANCE
+-----------------------------
+- Made enemy health and speed scale more gradually between grades.
+- Reduced how aggressively later encounters scale.
+- Reduced rendering-resolution overhead to help performance.
+- Added an enemy-spawning cap to limit excessive simultaneous enemies.
+- Applied difficulty scaling to incoming damage.
+- Kept separate student, normal, and special difficulty behavior.
+
+8. OTHER TECHNIQUES AND EFFECTS
+-------------------------------
+The current game also includes technique effects and animations for:
+- Gojo's Blue, Red, Hollow Purple, and Unlimited Void.
+- Sukuna's Dismantle, Cleave, Malevolent Shrine, and Fuga-style fire arrow.
+- Megumi's Divine Dogs, Nue, Toad, Mahoraga, and Chimera Shadow Garden.
+- Jogo's Ember Insects, Flame Burst, and Maximum Meteor.
+- Todo's close-range combo and Boogie Woogie.
+- Hakari's Sliding Doors, Rush Wave, Shoulder Shockwave, and Idle Death Gamble.
+
+These are features present in the current source; their exact visual quality and gameplay behavior should be verified in VR.
+
+9. TESTING CHECKLIST / KNOWN ITEMS
+----------------------------------
+- Sliding Doors: Verify that it adjusts to the nearest enemy correctly at different distances.
+- Gojo's gestures: Verify that Red and Blue are reliably distinguished and charge animations finish before attacks launch.
+- Mahoraga: Verify that the two-open-palms gesture is easy to trigger without accidental summons.
+- Todo: Verify that bringing both fists together activates Boogie Woogie without triggering the normal combo.
+- Training: Verify that Quit Training returns cleanly to the mode-selection screen.
+- Performance: Verify smooth gameplay during large encounters and Hakari's domain.
+- Cooldown GUI: The cooldown GUI was previously reported as bugged. It still needs explicit verification; a fix has not been confirmed.
+
+IMPORTANT
+--------
+This is a summary of requested changes and the implementation described for the latest source, not a claim that every feature has been fully playtested.
