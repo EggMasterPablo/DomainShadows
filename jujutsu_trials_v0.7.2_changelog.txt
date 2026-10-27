@@ -1,0 +1,26 @@
+JUJUTSU TRIALS
+Version 0.7.2 Beta — Cooldown Fixes
+===================================
+
+FIXES
+-----
+- Fixed abilities incorrectly appearing to be on cooldown immediately after
+  loading the game or starting a fresh run.
+- Reset technique, Hakari move, Boogie Woogie, domain, and punch cooldown state
+  when a new run starts.
+- Aligned Hakari move cooldown checks with the HUD and cooldown-reduction vows.
+- Applied cooldown-reduction vows consistently to Boogie Woogie and punches.
+- Corrected visual cooldown progress to use the effective cooldown duration.
+- Made abilities without a recorded activation show as ready instead of deriving
+  a cooldown from the page's elapsed time.
+
+PRESERVED
+--------
+- v0.7.1 punch, healing, selection-menu, and shikigami changes.
+- v0.7.0 visual cooldown HUD and quality-of-life features.
+- Existing characters, techniques, controller mappings, and Black Flash effects.
+
+TESTING
+-------
+- JavaScript syntax check: passed.
+- Quest headset and full gameplay testing: not yet performed.
